@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Realtime Vibration Monitor</title>
+  <style>
+    body { background: #0f172a; color: #f8fafc; font-family: sans-serif; text-align: center; padding: 10px; margin:0; }
+    h2 { color: #60a5fa; margin-bottom: 5px; }
+    .status { font-size: 0.9rem; color: #94a3b8; margin-bottom: 15px; }
+    .status.online { color: #10b981; }
+    .node-container { background: #1e293b; border: 1px solid #334155; border-radius: 8px; margin: 15px auto; padding: 15px; max-width: 800px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
+    .node-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #334155; padding-bottom: 10px; margin-bottom: 10px; }
+    .node-title { font-size: 1.2rem; font-weight: bold; color: #cbd5e1; }
+    .node-stats { display: flex; gap: 15px; font-size: 0.9rem; }
+    .val { font-weight: bold; color: #3b82f6; font-size: 1.1rem; }
+    .val-warn { color: #ef4444; font-weight: bold; font-size: 1.1rem; }
+    canvas { background: #0f172a; width: 100%; border-radius: 5px; margin-bottom: 10px; display: block; border: 1px solid #334155;}
+    h4 { text-align: left; margin: 5px 0; font-size: 0.9rem; color: #10b981; }
+  </style>
+  <!-- โหลดไลบรารี MQTT.js -->
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+</head>
+<body>
+  <h2>⚡ Real-time Factory Monitor</h2>
+  <div id="conn-status" class="status">Connecting to MQTT Broker...</div>
+  <div id="dashboard">Waiting for sensor data...</div>
+
+  <script>
+    const RES = 1000 / 512; 
+    let activeNodes = {}; // เก็บข้อมูล Node ที่ได้รับล่าสุด
+
+    // 🟢 วาดคลื่น Wave
+    function drawWave(ctx, wave) {
+      if(!wave) return;
+      ctx.clearRect(0, 0, 800, 150);
+      let padL = 40, gW = 800 - padL;
+      let maxW = 0.5;
+      for(let i=0; i<wave.length; i++) if(Math.abs(wave[i]) > maxW) maxW = Math.abs(wave[i]);
+
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1; ctx.beginPath();
+      ctx.moveTo(padL, 20); ctx.lineTo(800, 20);
+      ctx.moveTo(padL, 75); ctx.lineTo(800, 75);
+      ctx.moveTo(padL, 130); ctx.lineTo(800, 130);
+      ctx.stroke();
+
+      ctx.fillStyle = '#94a3b8'; ctx.font = '11px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      ctx.fillText("+" + maxW.toFixed(1), padL - 5, 20);
+      ctx.fillText("0.0", padL - 5, 75);
+      ctx.fillText("-" + maxW.toFixed(1), padL - 5, 130);
+
+      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 1.5; ctx.beginPath();
+      let stepW = gW / wave.length;
+      for(let i=0; i<wave.length; i++) {
+        let x = padL + (i * stepW);
+        let y = 75 - ((wave[i] / maxW) * 55);
+        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+
+    // 🟢 วาดคลื่น FFT
+    function drawFFT(ctx, fft) {
+      if(!fft) return;
+      ctx.clearRect(0, 0, 800, 200);
+      let padL = 40, gW = 800 - padL, yOff = 180, gH = 160;
+      let maxF = 2.0; let actualMaxF = 0; let domIdx = -1;
+      
+      for(let i=0; i<fft.length; i++) {
+        if(fft[i] > actualMaxF) { actualMaxF = fft[i]; domIdx = i; }
+      }
+      if(actualMaxF > maxF) maxF = actualMaxF;
+
+      ctx.strokeStyle = '#334155'; ctx.lineWidth = 1; ctx.beginPath();
+      for(let j=1; j<=4; j++) {
+        let yLine = yOff - (j * (gH/4));
+        ctx.moveTo(padL, yLine); ctx.lineTo(800, yLine);
+      }
+      ctx.stroke();
+
+      ctx.fillStyle = '#94a3b8'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
+      for(let j=1; j<=4; j++) ctx.fillText((maxF * (j/4)).toFixed(1), padL - 5, yOff - (j * (gH/4)));
+      
+      let barW = gW / fft.length;
+      for(let i=0; i<fft.length; i++) { 
+        let h = (fft[i] / maxF) * gH;
+        ctx.fillStyle = (i === domIdx && fft[i] > 1.0) ? '#ef4444' : '#3b82f6';
+        ctx.fillRect(padL + (i * barW), yOff - h, Math.max(barW - 1, 1), h);
+      }
+
+      ctx.fillStyle = '#94a3b8'; ctx.fillRect(padL, yOff, gW, 2);
+      ctx.fillStyle = '#cbd5e1'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      
+      let freqStep = Math.floor(fft.length / 5);
+      for(let i=0; i<fft.length; i+=freqStep) {
+         let xPos = padL + (i * barW);
+         let hz = ((i + 4) * RES).toFixed(0);
+         ctx.fillText(hz, xPos, yOff + 5);
+      }
+    }
+
+    // 🟢 สร้างโครงสร้าง HTML สำหรับการแสดงผล
+    function updateDashboard() {
+      let container = document.getElementById('dashboard');
+      let html = '';
+      
+      Object.keys(activeNodes).sort().forEach((id) => {
+        let n = activeNodes[id];
+        html += `
+          <div class="node-container">
+            <div class="node-header">
+              <div class="node-title">${n.id}</div>
+              <div class="node-stats">
+                <div>RMS: <span class="val">${n.rms.toFixed(2)}</span> mm/s</div>
+                <div>Peak: <span class="val">${n.peak.toFixed(2)}</span> G</div>
+                <div>Dom Freq: <span class="val-warn">${n.freq.toFixed(1)}</span> Hz</div>
+                <div>Temp: <span class="val">${n.temp.toFixed(1)}</span> °C</div>
+              </div>
+            </div>
+            <h4>〰️ Time Waveform (128 Pts)</h4>
+            <canvas id="c-wave-${n.id}" width="800" height="150"></canvas>
+            <h4 style="color:#3b82f6;">📊 FFT Spectrum (128 Bins)</h4>
+            <canvas id="c-fft-${n.id}" width="800" height="200"></canvas>
+          </div>`;
+      });
+      
+      container.innerHTML = html;
+
+      // วาดกราฟหลังจาก HTML ถูกเรนเดอร์เสร็จ
+      Object.keys(activeNodes).forEach((id) => {
+        const ctxW = document.getElementById(`c-wave-${id}`).getContext('2d');
+        const ctxF = document.getElementById(`c-fft-${id}`).getContext('2d');
+        drawWave(ctxW, activeNodes[id].wave);
+        drawFFT(ctxF, activeNodes[id].fft);
+      });
+    }
+
+    // ==========================================
+    // 🟢 เชื่อมต่อ MQTT ผ่าน WebSockets
+    // ==========================================
+    const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
+    const MQTT_TOPIC = 'factory/vibration/live';
+
+    const client = mqtt.connect(MQTT_BROKER);
+
+    client.on('connect', function () {
+      let statusDiv = document.getElementById('conn-status');
+      statusDiv.innerText = "🟢 Online - Connected to MQTT Stream";
+      statusDiv.className = "status online";
+      
+      // สมัครรับข้อมูล
+      client.subscribe(MQTT_TOPIC, function (err) {
+        if (err) console.error("Subscribe Error", err);
+      });
+    });
+
+    client.on('message', function (topic, message) {
+      try {
+        let payload = JSON.parse(message.toString());
+        activeNodes[payload.id] = payload; // เก็บหรืออัปเดตข้อมูลเซ็นเซอร์
+        updateDashboard(); // รีเฟรชหน้าจอทันทีที่มีข้อมูลเข้า
+      } catch (e) {
+        console.error("Invalid JSON Received", e);
+      }
+    });
+
+    client.on('offline', function () {
+      let statusDiv = document.getElementById('conn-status');
+      statusDiv.innerText = "🔴 Offline - Disconnected from Broker";
+      statusDiv.className = "status";
+    });
+  </script>
+</body>
+</html>
