@@ -4,326 +4,201 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Real-time 3-Axis Vibration Monitor</title>
+  
+  <link rel="stylesheet" href="https://unpkg.com/uplot/dist/uPlot.min.css">
+  <script src="https://unpkg.com/uplot/dist/uPlot.iife.min.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+
   <style>
-    /* 🟢 Modern CSS Reset & Variable Design System */
     :root {
-      --bg-main: #0b0f19;
-      --bg-card: #151f32;
-      --bg-graph: #0a0e17;
-      --border-color: #24344d;
-      --text-main: #f8fafc;
-      --text-muted: #94a3b8;
-      --primary: #3b82f6;
-      --success: #10b981;
-      --warn: #f59e0b;
-      --danger: #f43f5e;
+      --bg-main: #0b0f19; --bg-card: #151f32; --bg-graph: #0a0e17;
+      --border-color: #24344d; --text-main: #f8fafc; --text-muted: #94a3b8;
+      --primary: #3b82f6; --success: #10b981; --warn: #f59e0b; --danger: #f43f5e;
     }
 
     * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg-main); color: var(--text-main); font-family: sans-serif; padding: 15px; }
+    h2 { color: #60a5fa; font-size: 1.6rem; margin-bottom: 6px; }
     
-    body { 
-      background: var(--bg-main); 
-      color: var(--text-main); 
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; 
-      padding: 15px;
-      line-height: 1.4;
-    }
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; margin-bottom: 20px; background: #1e293b; padding: 6px 14px; border-radius: 20px; }
+    .status.online { color: var(--success); } .status.offline { color: var(--danger); }
 
-    h2 { 
-      color: #60a5fa; 
-      font-size: 1.6rem; 
-      margin-bottom: 6px; 
-      font-weight: 700;
-      letter-spacing: -0.025em;
-    }
+    #dashboard { display: grid; grid-template-columns: 1fr; gap: 20px; max-width: 1200px; margin: 0 auto; }
+    .node-container { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 12px; padding: 16px; }
+    .node-title { font-size: 1.25rem; font-weight: 700; color: #e2e8f0; margin-bottom: 10px; }
     
-    .status { 
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 0.85rem; 
-      color: var(--text-muted); 
-      margin-bottom: 20px; 
-      background: #1e293b;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-weight: 500;
-    }
-    .status.online { color: var(--success); background: rgba(16, 185, 129, 0.1); }
-    .status.offline { color: var(--danger); background: rgba(244, 63, 94, 0.1); }
-
-    #dashboard {
-      display: grid;
-      grid-template-columns: 1fr;
-      gap: 20px;
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    .node-container { 
-      background: var(--bg-card); 
-      border: 1px solid var(--border-color); 
-      border-radius: 12px; 
-      padding: 16px; 
-      box-shadow: 0 10px 15px -3px rgba(0,0,0,0.4); 
-      text-align: left;
-    }
-    
-    .node-header { 
-      border-bottom: 1px solid var(--border-color); 
-      padding-bottom: 12px; 
-      margin-bottom: 12px; 
-    }
-    
-    .node-title { 
-      font-size: 1.25rem; 
-      font-weight: 700; 
-      color: #e2e8f0; 
-      margin-bottom: 10px;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-    }
-    
-    /* 📱 Stats Grid แบบ Responsive (1 แถวบนจอใหญ่ / 2x2 บนจอมือถือ) */
-    .node-stats { 
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 10px;
-    }
-    
-    .stat-card {
-      background: rgba(10, 14, 23, 0.5);
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px solid rgba(36, 52, 77, 0.4);
-    }
-    .stat-label { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 2px; }
+    .node-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 15px; }
+    .stat-card { background: rgba(10, 14, 23, 0.5); padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border-color); }
+    .stat-label { font-size: 0.75rem; color: var(--text-muted); }
     .stat-value { font-size: 1.15rem; font-weight: 700; color: var(--primary); }
-    .stat-value.warn { color: var(--danger); }
     
-    .axis-labels { 
-      font-size: 0.8rem; 
-      background: rgba(255, 255, 255, 0.03);
-      padding: 8px 12px;
-      border-radius: 6px;
-      margin-bottom: 15px;
-      border-left: 3px solid var(--success);
-      color: #cbd5e1;
-    }
+    .graph-grid { display: grid; grid-template-columns: 1fr; gap: 16px; }
+    .graph-block { background: var(--bg-graph); padding: 12px; border-radius: 8px; border: 1px solid var(--border-color); }
+    .graph-block h4 { margin-bottom: 8px; font-size: 0.85rem; font-weight: 600; color: #e2e8f0;}
+    .chart-container { width: 100%; height: 180px; } /* ขยายความสูงเผื่อ Legend */
 
-    /* 📱 Graph Layout (1 คอลัมน์บนมือถือ / 2 คอลัมน์บนจอคอมพิวเตอร์) */
-    .graph-grid { 
-      display: grid; 
-      grid-template-columns: 1fr; 
-      gap: 16px; 
-    }
-    
-    .graph-block { 
-      background: var(--bg-graph); 
-      padding: 12px; 
-      border-radius: 8px; 
-      border: 1px solid var(--border-color); 
-    }
-    
-    .graph-block h4 { 
-      margin-bottom: 8px; 
-      font-size: 0.85rem; 
-      font-weight: 600; 
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-    
-    /* ควบคุม Canvas ให้ยืดหยุ่นลื่นไหล 100% */
-    .canvas-container {
-      position: relative;
-      width: 100%;
-    }
-    
-    canvas { 
-      background: #090d16; 
-      width: 100%; 
-      height: auto;
-      border-radius: 4px; 
-      display: block; 
-    }
+    /* 🟢 ปรับแต่ง uPlot Legend ให้อ่านง่าย */
+    .u-legend { color: #f8fafc; font-size: 12px; padding-bottom: 5px; text-align: center; }
+    .u-legend .u-series th { font-weight: 600; }
+    .u-legend .u-value { color: #e2e8f0; }
 
-    /* 💻 Media Queries สำหรับหน้าจอใหญ่ (คอมพิวเตอร์ / แท็บเล็ตแนวนอน) */
-    @media (min-width: 768px) {
-      body { padding: 25px; }
-      h2 { font-size: 2rem; }
-      .node-stats { grid-template-columns: repeat(4, 1fr); gap: 15px; }
-      .graph-grid { grid-template-columns: 1fr 1fr; gap: 20px; }
-      .node-container { padding: 20px; }
-    }
+    @media (min-width: 768px) { .graph-grid { grid-template-columns: 1fr 1fr; } }
   </style>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
 </head>
 <body>
 
-  <h2>⚡ 3-Axis Vibration Dashboard</h2>
+  <h2>⚡ 3-Axis XYZ Vibration Dashboard</h2>
   <div id="conn-status" class="status">Connecting to MQTT Broker...</div>
-
   <div id="dashboard">Waiting for 3-Axis sensor data...</div>
 
   <script>
     const RES = 1000 / 512; 
     let activeNodes = {}; 
+    let charts = {}; 
+    let isDashboardDirty = false;
 
-    // 🟢 วาดคลื่น Waveform
-    function drawWave(canvas, wave) {
-      if(!wave) return;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, 800, 150);
-      let padL = 45, gW = 800 - padL;
-      
-      let maxW = 0.5;
-      for(let i=0; i<wave.length; i++) if(Math.abs(wave[i]) > maxW) maxW = Math.abs(wave[i]);
+    // สร้างแกน X มาตรฐานความยาว 128 จุด
+    const waveX = Array.from({length: 128}, (_, i) => i);
+    const fftX = Array.from({length: 128}, (_, i) => (i + 4) * RES);
+    const emptyArr = Array.from({length: 128}, () => 0); // เอาไว้ถมดำถ้าข้อมูลแกนไหนหายไป
 
-      // Grid
-      ctx.strokeStyle = '#161f32'; ctx.lineWidth = 1; ctx.beginPath();
-      ctx.moveTo(padL, 20); ctx.lineTo(800, 20);
-      ctx.moveTo(padL, 75); ctx.lineTo(800, 75);
-      ctx.moveTo(padL, 130); ctx.lineTo(800, 130);
-      ctx.stroke();
-
-      // Labels Y
-      ctx.fillStyle = '#475569'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      ctx.fillText("+" + maxW.toFixed(1), padL - 8, 20);
-      ctx.fillText("0.0", padL - 8, 75);
-      ctx.fillText("-" + maxW.toFixed(1), padL - 8, 130);
-
-      // Wave Line
-      ctx.strokeStyle = '#10b981'; ctx.lineWidth = 2; ctx.beginPath();
-      let stepW = gW / wave.length;
-      for(let i=0; i<wave.length; i++) {
-        let x = padL + (i * stepW);
-        let y = 75 - ((wave[i] / maxW) * 55);
-        if(i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
-      }
-      ctx.stroke();
+    // ==========================================
+    // 🟢 ตั้งค่ากราฟ Waveform (3 เส้น)
+    // ==========================================
+    function getWaveOptions(width) {
+      return {
+        width: width, height: 180,
+        axes: [ { show: false }, { stroke: "#cbd5e1", grid: { stroke: "#24344d", width: 1 } } ],
+        series: [
+          {}, 
+          { label: "X", stroke: "#f43f5e", width: 1.5, points: { show: false } }, // สีแดง
+          { label: "Y", stroke: "#10b981", width: 1.5, points: { show: false } }, // สีเขียว
+          { label: "Z", stroke: "#3b82f6", width: 1.5, points: { show: false } }  // สีน้ำเงิน
+        ],
+        cursor: { show: false }
+      };
     }
 
-    // 🟢 วาดแท่งสเปกตรัม FFT
-    function drawFFT(canvas, fft) {
-      if(!fft) return;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, 800, 150); // ปรับความสูงเหลือ 150 เท่ากันเพื่อความสมมาตรบนมือถือ
-      let padL = 45, gW = 800 - padL, yOff = 130, gH = 110;
-      
-      let maxF = 2.0; let actualMaxF = 0; let domIdx = -1;
-      for(let i=0; i<fft.length; i++) {
-        if(fft[i] > actualMaxF) { actualMaxF = fft[i]; domIdx = i; }
-      }
-      if(actualMaxF > maxF) maxF = actualMaxF;
-
-      // Grid
-      ctx.strokeStyle = '#161f32'; ctx.lineWidth = 1; ctx.beginPath();
-      for(let j=1; j<=3; j++) {
-        let yLine = yOff - (j * (gH/3));
-        ctx.moveTo(padL, yLine); ctx.lineTo(800, yLine);
-      }
-      ctx.stroke();
-
-      // Labels Y
-      ctx.fillStyle = '#475569'; ctx.font = 'bold 11px sans-serif'; ctx.textAlign = 'right'; ctx.textBaseline = 'middle';
-      for(let j=1; j<=3; j++) ctx.fillText((maxF * (j/3)).toFixed(1), padL - 8, yOff - (j * (gH/3)));
-      
-      // Bars FFT
-      let barW = gW / fft.length;
-      for(let i=0; i<fft.length; i++) { 
-        let h = (fft[i] / maxF) * gH;
-        ctx.fillStyle = (i === domIdx && fft[i] > 1.0) ? '#f43f5e' : '#3b82f6';
-        ctx.fillRect(padL + (i * barW), yOff - h, Math.max(barW - 1, 1), h);
-      }
-
-      ctx.fillStyle = '#1e293b'; ctx.fillRect(padL, yOff, gW, 2);
-      
-      // Labels X (Hz)
-      ctx.fillStyle = '#64748b'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      let freqStep = Math.floor(fft.length / 4);
-      for(let i=0; i<fft.length; i+=freqStep) {
-         let xPos = padL + (i * barW);
-         let hz = ((i + 4) * RES).toFixed(0);
-         ctx.fillText(hz + "Hz", xPos, yOff + 5);
-      }
+    // ==========================================
+    // 🟢 ตั้งค่ากราฟ FFT (3 เส้น)
+    // ==========================================
+    function getFftOptions(width) {
+      return {
+        width: width, height: 180,
+        axes: [
+          { stroke: "#cbd5e1", grid: { show: false }, values: (u, vals) => vals.map(v => v.toFixed(0) + "Hz") },
+          { stroke: "#cbd5e1", grid: { stroke: "#24344d", width: 1 } }
+        ],
+        series: [
+          {}, 
+          { label: "X", stroke: "#f43f5e", width: 1.5, points: { show: false } }, 
+          { label: "Y", stroke: "#10b981", width: 1.5, points: { show: false } }, 
+          { label: "Z", stroke: "#3b82f6", width: 1.5, points: { show: false } }
+        ],
+        cursor: { show: false }
+      };
     }
 
-    // 🟢 โครงสร้าง Responsive HTML Injection
-    function updateDashboard() {
+    function updateDashboardOptimized() {
       let container = document.getElementById('dashboard');
-      let html = '';
+      if (container.innerHTML.includes("Waiting")) container.innerHTML = ''; 
       
-      Object.keys(activeNodes).sort().forEach((id) => {
+      Object.keys(activeNodes).forEach((id) => {
         let n = activeNodes[id];
-        html += `
-          <div class="node-container">
-            <div class="node-header">
-              <div class="node-title">🏭 Node: ${n.id}</div>
-              <div class="node-stats">
-                <div class="stat-card">
-                  <div class="stat-label">RMS (3-Axis)</div>
-                  <div class="stat-value">${n.rms.toFixed(2)} <span style="font-size:0.75rem">mm/s</span></div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-label">Peak Impact</div>
-                  <div class="stat-value" style="color:#60a5fa">${n.peak.toFixed(2)} <span style="font-size:0.75rem">G</span></div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-label">Dom Freq</div>
-                  <div class="stat-value warn">${n.freq.toFixed(1)} <span style="font-size:0.75rem">Hz</span></div>
-                </div>
-                <div class="stat-card">
-                  <div class="stat-label">Temperature</div>
-                  <div class="stat-value" style="color:#10b981">${n.temp.toFixed(1)} <span style="font-size:0.75rem">°C</span></div>
-                </div>
+        let cardId = `node-card-${id}`;
+        let cardEl = document.getElementById(cardId);
+        
+        if (!cardEl) {
+          let html = `
+          <div class="node-container" id="${cardId}">
+            <div class="node-title">🏭 Node: ${n.id}</div>
+            <div class="node-stats">
+              <div class="stat-card">
+                <div class="stat-label">Max RMS</div>
+                <div class="stat-value" id="val-rms-${id}">--</div>
               </div>
-            </div>
-            
-            <div class="axis-labels">
-              <strong>📊 การรวมสัญญาณ:</strong> 3-Axis Resultant Magnitude ($\sqrt{X^2+Y^2+Z^2}$)
+              <div class="stat-card">
+                <div class="stat-label">Max Peak</div>
+                <div class="stat-value" style="color:#60a5fa" id="val-peak-${id}">--</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Dom Freq</div>
+                <div class="stat-value warn" id="val-freq-${id}">--</div>
+              </div>
+              <div class="stat-card">
+                <div class="stat-label">Temperature</div>
+                <div class="stat-value" style="color:#10b981" id="val-temp-${id}">--</div>
+              </div>
             </div>
 
             <div class="graph-grid">
               <div class="graph-block">
-                <h4 style="color:#10b981;">🟢 Time Waveform (128 Pts)</h4>
-                <div class="canvas-container">
-                  <canvas id="c-wave-${n.id}" width="800" height="150"></canvas>
-                </div>
+                <h4>🟢 Time Waveform (X, Y, Z)</h4>
+                <div class="chart-container" id="chart-wave-${id}"></div>
               </div>
               <div class="graph-block">
-                <h4 style="color:#3b82f6;">🔵 FFT Spectrum Magnitude</h4>
-                <div class="canvas-container">
-                  <canvas id="c-fft-${n.id}" width="800" height="150"></canvas>
-                </div>
+                <h4>🔵 FFT Spectrum (X, Y, Z)</h4>
+                <div class="chart-container" id="chart-fft-${id}"></div>
               </div>
             </div>
           </div>`;
-      });
-      
-      container.innerHTML = html;
+          container.insertAdjacentHTML('beforeend', html);
 
-      // เรนเดอร์ลงกราฟหลังเพิ่มอิลิเมนต์เสร็จ
-      Object.keys(activeNodes).forEach((id) => {
-        const canvasW = document.getElementById(`c-wave-${id}`);
-        const canvasF = document.getElementById(`c-fft-${id}`);
-        drawWave(canvasW, activeNodes[id].wave);
-        drawFFT(canvasF, activeNodes[id].fft);
+          let waveContainer = document.getElementById(`chart-wave-${id}`);
+          let fftContainer = document.getElementById(`chart-fft-${id}`);
+          
+          charts[id] = {
+            wave: new uPlot(getWaveOptions(waveContainer.clientWidth), [waveX, emptyArr, emptyArr, emptyArr], waveContainer),
+            fft: new uPlot(getFftOptions(fftContainer.clientWidth), [fftX, emptyArr, emptyArr, emptyArr], fftContainer)
+          };
+        }
+
+        document.getElementById(`val-rms-${id}`).innerHTML = `${(n.rms || 0).toFixed(2)} <span style="font-size:0.75rem">mm/s</span>`;
+        document.getElementById(`val-peak-${id}`).innerHTML = `${(n.peak || 0).toFixed(2)} <span style="font-size:0.75rem">G</span>`;
+        document.getElementById(`val-freq-${id}`).innerHTML = `${(n.freq || 0).toFixed(1)} <span style="font-size:0.75rem">Hz</span>`;
+        document.getElementById(`val-temp-${id}`).innerHTML = `${(n.temp || 0).toFixed(1)} <span style="font-size:0.75rem">°C</span>`;
+
+        // 🟢 ดึงข้อมูล 3 แกนลงกราฟ (ถ้าไม่มีแกนไหนส่งมา ให้วาดเป็นเส้น 0 ว่างๆ)
+        if (charts[id]) {
+          let wx = n.waveX || n.wave || emptyArr;
+          let wy = n.waveY || emptyArr;
+          let wz = n.waveZ || emptyArr;
+          
+          let fx = n.fftX || n.fft || emptyArr;
+          let fy = n.fftY || emptyArr;
+          let fz = n.fftZ || emptyArr;
+
+          charts[id].wave.setData([waveX, wx, wy, wz]);
+          charts[id].fft.setData([fftX, fx, fy, fz]);
+        }
       });
     }
 
-    // ==========================================
-    // 🟢 MQTT Connection via WebSockets
-    // ==========================================
-    const MQTT_BROKER = 'wss://broker.emqx.io:8084/mqtt';
-    const MQTT_TOPIC = 'factory/vibration/live';
+    window.addEventListener("resize", () => {
+      Object.keys(charts).forEach((id) => {
+        let w = document.getElementById(`chart-wave-${id}`);
+        let f = document.getElementById(`chart-fft-${id}`);
+        if (w && f) {
+          charts[id].wave.setSize({ width: w.clientWidth, height: 180 });
+          charts[id].fft.setSize({ width: f.clientWidth, height: 180 });
+        }
+      });
+    });
 
-    const client = mqtt.connect(MQTT_BROKER);
+    setInterval(() => { if (isDashboardDirty) { updateDashboardOptimized(); isDashboardDirty = false; } }, 200);
+
+    // ==========================================
+    // 🟢 MQTT Connection (HiveMQ Cloud)
+    // ==========================================
+    const MQTT_BROKER = 'wss://4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud:8884/mqtt';
+    const MQTT_TOPIC = 'factory/vibration/live';
+    const options = { username: 'vibmonitor', password: 'Mcl19508', clientId: 'WebDash_' + Math.random().toString(16).substr(2, 8) };
+
+    const client = mqtt.connect(MQTT_BROKER, options);
 
     client.on('connect', function () {
       let statusDiv = document.getElementById('conn-status');
-      statusDiv.innerText = "🟢 Connected - 3-Axis Stream Active";
+      statusDiv.innerText = "🟢 Connected - XYZ Multi-Axis Mode";
       statusDiv.className = "status online";
       client.subscribe(MQTT_TOPIC);
     });
@@ -332,10 +207,8 @@
       try {
         let payload = JSON.parse(message.toString());
         activeNodes[payload.id] = payload; 
-        updateDashboard(); 
-      } catch (e) {
-        console.error("Payload Data Error", e);
-      }
+        isDashboardDirty = true; 
+      } catch (e) {}
     });
 
     client.on('offline', function () {
