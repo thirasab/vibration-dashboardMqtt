@@ -1,307 +1,1084 @@
-#include <WiFi.h>
-#include <WiFiClientSecure.h>
-#include <HTTPClient.h>
-#include <esp_task_wdt.h>
-#include <Preferences.h>
-#include <PubSubClient.h> 
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>3-Axis XYZ Vibration Dashboard</title>
+  <link rel="stylesheet" href="https://unpkg.com/uplot/dist/uPlot.min.css">
+  <script src="https://unpkg.com/uplot/dist/uPlot.iife.min.js"></script>
+  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+  <style>
+    :root {
+      --bg-main:      #060d18;
+      --bg-card:      #0d1526;
+      --bg-graph:     #0a1120;
+      --bg-stat:      #0f1c30;
+      --border:       #1e3a5f;
+      --border-glow:  #2563eb44;
+      --text-main:    #f0f6ff;
+      --text-muted:   #4d6a8a;
+      --primary:      #3b82f6;
+      --success:      #10b981;
+      --warn:         #f59e0b;
+      --danger:       #ef4444;
+      --x-color:      #f43f5e;
+      --y-color:      #10b981;
+      --z-color:      #3b82f6;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-// =====================================================
-// ⚙️ WIFI, MQTT & GAS CONFIG
-// =====================================================
-const char* WIFI_SSID = "CCTV";
-const char* WIFI_PASS = "Master4321";
+    body {
+      background: var(--bg-main);
+      background-image:
+        radial-gradient(ellipse 80% 40% at 50% -10%, #1e3a5f55 0%, transparent 70%),
+        radial-gradient(ellipse 60% 30% at 80% 100%, #2563eb22 0%, transparent 60%);
+      color: var(--text-main);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
 
-// 🟢 ตั้งค่า HiveMQ Cloud (Private Broker)
-const char* MQTT_SERVER = "4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud"; 
-const int MQTT_PORT = 8883; 
-const char* MQTT_USER = "vibmonitor";
-const char* MQTT_PASS = "Mcl19508"; 
-const char* MQTT_TOPIC_LIVE = "factory/vibration/live";
+    /* ══ TOP BAR ══════════════════════════════════════ */
+    .top-bar {
+      display: flex; flex-wrap: wrap;
+      justify-content: space-between; align-items: center;
+      gap: 8px;
+      padding: clamp(8px,2vw,16px) clamp(12px,3vw,28px);
+      background: rgba(13,21,38,0.92);
+      backdrop-filter: blur(14px);
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 200;
+    }
+    .top-left  { display:flex; align-items:center; gap:12px; }
+    .top-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
-// 🟢 URL สำหรับ Google Apps Script (Data Logger)
-const char* GAS_URL = "https://script.google.com/macros/s/AKfycbwmv5BnHvE7kF0puajzsC4jz4VFESSrDLaYBfoiL0zDPkROTfuFw8-v3TB0PmhudZq2/exec";
+    .logo-icon {
+      width:38px; height:38px; flex-shrink:0;
+      background: linear-gradient(135deg,#1d4ed8,#7c3aed);
+      border-radius:10px;
+      display:flex; align-items:center; justify-content:center;
+      font-size:20px; box-shadow:0 0 18px #3b82f644;
+    }
+    h1 {
+      font-size: clamp(0.9rem,2.5vw,1.3rem); font-weight:800;
+      background: linear-gradient(90deg,#60a5fa,#a78bfa);
+      -webkit-background-clip:text; -webkit-text-fill-color:transparent;
+      background-clip:text;
+    }
+    .subtitle { font-size:clamp(0.6rem,1.4vw,0.72rem); color:var(--text-muted); }
 
-// ใช้ WiFiClientSecure สำหรับการเชื่อมต่อเข้ารหัส SSL/TLS
-WiFiClientSecure espClient;
-PubSubClient mqtt(espClient);
+    .badge {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 12px; border-radius:20px;
+      font-size:clamp(0.62rem,1.4vw,0.76rem); font-weight:600;
+      white-space:nowrap; border:1px solid transparent;
+      transition:all .3s;
+    }
+    .badge-blue   { background:rgba(37,99,235,.12); color:#60a5fa; border-color:rgba(59,130,246,.25); }
+    .badge-online { color:var(--success); background:#10b98115; border-color:#10b98133; }
+    .badge-offline{ color:var(--danger);  background:#ef444415; border-color:#ef444433; }
+    .badge-warn   { color:var(--warn);    background:#f59e0b15; border-color:#f59e0b33; }
 
-// =====================================================
-// 📌 HARDWARE PINS
-// =====================================================
-#define WIFI_LED_PIN    19
-#define SEND_LED_PIN    21
-#define RELAY_PIN       5   
-#define RX_LED_PIN      23 
+    .btn {
+      display:inline-flex; align-items:center; gap:6px;
+      padding:5px 14px; border-radius:8px; border:none; cursor:pointer;
+      font-size:0.75rem; font-weight:700; transition:all .2s;
+    }
+    .btn-csv {
+      background:linear-gradient(135deg,#065f46,#047857);
+      color:#fff; box-shadow:0 2px 8px #10b98133;
+    }
+    .btn-csv:hover { transform:translateY(-1px); box-shadow:0 4px 14px #10b98144; }
+    .btn-alarm {
+      background:linear-gradient(135deg,#7f1d1d,#991b1b);
+      color:#fca5a5; box-shadow:0 2px 8px #ef444433;
+    }
+    .btn-alarm:hover { transform:translateY(-1px); }
 
-#define RS485_RX       16
-#define RS485_TX       17
-#define RS485_DE_RE     4
-HardwareSerial RS485Serial(2);
+    .dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex-shrink:0; }
+    .dot.pulse { animation:pulse-dot 1.4s ease-in-out infinite; }
+    @keyframes pulse-dot {
+      0%,100%{ opacity:1; transform:scale(1); }
+      50%    { opacity:.4; transform:scale(.65); }
+    }
 
-// =====================================================
-// 🟢 SYSTEM VARIABLES & STRUCTS (RAM OPTIMIZED)
-// =====================================================
-// ขยาย Buffer เป็น 8192 bytes เพื่อรองรับข้อมูล 3 แกน (XYZ)
-const int MAX_LINE_LENGTH = 8192; 
-char lineBuffer[MAX_LINE_LENGTH]; 
-int lineIndex = 0;                
+    /* ══ ALARM BANNER ════════════════════════════════ */
+    #alarm-banner {
+      display:none;
+      background:linear-gradient(90deg,#7f1d1d,#991b1b,#7f1d1d);
+      background-size:200% 100%;
+      animation:banner-slide 3s linear infinite;
+      color:#fca5a5; font-weight:700;
+      padding:7px 20px; text-align:center;
+      font-size:clamp(0.7rem,1.5vw,0.82rem);
+      border-bottom:1px solid #ef444455;
+      letter-spacing:.5px;
+    }
+    @keyframes banner-slide {
+      0%  { background-position:0% 0; }
+      100%{ background-position:200% 0; }
+    }
 
-unsigned long lastPollMs = 0;
-unsigned long lastBatchMs = 0;
-int pollIndex = 0;
+    /* ══ MAIN ════════════════════════════════════════ */
+    .main-content {
+      padding: clamp(12px,2.5vw,22px) clamp(12px,3vw,28px);
+    }
 
-struct FeatureAccumulator {
-  bool hasData;
-  uint32_t count;
-  float maxPeakAcc;
-  float sumRmsVel;     
-  float maxDomFreq; 
-  float sumTemp;
+    /* ══ DASHBOARD GRID ══════════════════════════════ */
+    #dashboard {
+      display:grid; grid-template-columns:1fr;
+      gap:clamp(12px,2vw,20px);
+    }
+    @media(min-width:1100px){ #dashboard{ grid-template-columns:1fr 1fr; } }
+    @media(min-width:1600px){ #dashboard{ grid-template-columns:1fr 1fr 1fr; } }
 
-  void clear() {
-    hasData = false; count = 0;
-    maxPeakAcc = 0.0f; sumRmsVel = 0.0f; maxDomFreq = 0.0f; sumTemp = 0.0f;
+    /* ══ WAITING ══════════════════════════════════════ */
+    .waiting-state {
+      grid-column:1/-1;
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      gap:16px; padding:60px 20px; color:var(--text-muted);
+    }
+    .spinner {
+      width:46px; height:46px;
+      border:3px solid var(--border); border-top-color:var(--primary);
+      border-radius:50%; animation:spin 1s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
+
+    /* ══ NODE CARD ════════════════════════════════════ */
+    .node-container {
+      background:var(--bg-card); border:1px solid var(--border);
+      border-radius:16px; padding:clamp(12px,2vw,20px);
+      box-shadow:0 4px 24px #00000040, inset 0 1px 0 #ffffff08;
+      animation:fadeIn .4s ease;
+      transition:border-color .4s, box-shadow .4s;
+      position:relative; overflow:hidden;
+    }
+    .node-container::before {
+      content:''; position:absolute; inset:0; pointer-events:none;
+      background:linear-gradient(135deg,#ffffff04 0%,transparent 50%);
+    }
+    .node-container.alarm {
+      border-color:#ef4444aa !important;
+      box-shadow:0 0 32px #ef444433, inset 0 0 60px #ef444408 !important;
+      animation:fadeIn .4s ease, alarm-pulse 2s ease-in-out infinite;
+    }
+    @keyframes alarm-pulse {
+      0%,100%{ box-shadow:0 0 20px #ef444422, inset 0 0 40px #ef444406; }
+      50%    { box-shadow:0 0 40px #ef444455, inset 0 0 80px #ef444412; }
+    }
+    @keyframes fadeIn{ from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;} }
+
+    .node-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:clamp(10px,1.5vw,14px); flex-wrap:wrap; gap:8px;
+    }
+    .node-title {
+      font-size:clamp(0.88rem,2vw,1.05rem); font-weight:700; color:#e2e8f0;
+      display:flex; align-items:center; gap:8px;
+    }
+    .node-icon {
+      width:28px; height:28px;
+      background:linear-gradient(135deg,#1d4ed8,#4f46e5);
+      border-radius:8px; display:flex; align-items:center;
+      justify-content:center; font-size:14px;
+    }
+    .live-badge {
+      font-size:.66rem; font-weight:700;
+      padding:3px 9px; border-radius:12px;
+      background:rgba(16,185,129,.15); color:#10b981;
+      border:1px solid rgba(16,185,129,.3);
+      animation:pulse-dot 2s ease-in-out infinite;
+    }
+    .alarm-tag {
+      display:none; font-size:.66rem; font-weight:700;
+      padding:3px 9px; border-radius:12px;
+      background:rgba(239,68,68,.2); color:#fca5a5;
+      border:1px solid rgba(239,68,68,.4);
+    }
+
+    /* ══ STAT CARDS ════════════════════════════════════ */
+    .node-stats {
+      display:grid; grid-template-columns:repeat(2,1fr);
+      gap:clamp(6px,1.2vw,10px); margin-bottom:clamp(10px,1.5vw,14px);
+    }
+    @media(min-width:480px){ .node-stats{ grid-template-columns:repeat(4,1fr); } }
+
+    .stat-card {
+      background:var(--bg-stat); padding:clamp(8px,1.5vw,12px) 8px;
+      border-radius:10px; border:1px solid var(--border);
+      text-align:center; transition:border-color .3s, transform .2s;
+      position:relative; overflow:hidden;
+    }
+    .stat-card:hover{ border-color:var(--border-glow); transform:translateY(-1px); }
+    .stat-icon  { font-size:.95rem; margin-bottom:2px; }
+    .stat-label {
+      font-size:clamp(.56rem,1.1vw,.66rem); color:var(--text-muted);
+      font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px;
+    }
+    .stat-row { display:flex; align-items:baseline; justify-content:center; gap:4px; }
+    .stat-value { font-size:clamp(.95rem,2.5vw,1.2rem); font-weight:800; line-height:1; }
+    .stat-trend { font-size:.8rem; }
+    .stat-unit  { font-size:.58rem; color:var(--text-muted); font-weight:500; margin-top:2px; }
+
+    /* ══ GRAPH GRID ════════════════════════════════════ */
+    .graph-grid {
+      display:grid; grid-template-columns:1fr;
+      gap:clamp(8px,1.5vw,12px);
+    }
+    @media(min-width:560px){ .graph-grid{ grid-template-columns:1fr 1fr; } }
+
+    .graph-block {
+      background:var(--bg-graph); padding:clamp(8px,1.5vw,12px);
+      border-radius:10px; border:1px solid var(--border);
+      transition:border-color .3s; min-width:0;
+    }
+    .graph-block:hover{ border-color:#2563eb55; }
+    .graph-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:8px; flex-wrap:wrap; gap:4px;
+    }
+    .graph-title {
+      font-size:clamp(.68rem,1.5vw,.8rem); font-weight:700; color:#cbd5e1;
+      display:flex; align-items:center; gap:6px;
+    }
+    .graph-unit {
+      font-size:.63rem; color:var(--text-muted);
+      background:rgba(255,255,255,.05);
+      padding:2px 7px; border-radius:6px;
+      font-weight:600; border:1px solid var(--border);
+    }
+    .chart-wrap { display:block; width:100%; min-width:0; position:relative; }
+    .chart-wrap > .u-wrap { width:100% !important; min-width:0 !important; }
+    .chart-wrap canvas { border-radius:6px; display:block; }
+
+    .axis-legend { display:flex; gap:12px; justify-content:center; margin-top:6px; }
+    .axis-legend span {
+      font-size:.63rem; font-weight:700;
+      display:flex; align-items:center; gap:4px; color:var(--text-muted);
+    }
+    .axis-legend span::before {
+      content:''; display:block; width:18px; height:2.5px; border-radius:2px;
+    }
+    .leg-x::before{ background:var(--x-color); }
+    .leg-y::before{ background:var(--y-color); }
+    .leg-z::before{ background:var(--z-color); }
+
+    /* ══ THRESHOLD SETTINGS MODAL ═══════════════════════ */
+    .modal-overlay {
+      display:none; position:fixed; inset:0;
+      background:rgba(0,0,0,.7); backdrop-filter:blur(4px);
+      z-index:500; align-items:center; justify-content:center;
+    }
+    .modal-overlay.open { display:flex; }
+    .modal {
+      background:var(--bg-card); border:1px solid var(--border);
+      border-radius:16px; padding:24px; width:min(420px,90vw);
+      box-shadow:0 8px 40px #00000060;
+    }
+    .modal h3 { font-size:1rem; font-weight:800; margin-bottom:16px; color:#e2e8f0; }
+    .modal-grid { display:grid; gap:12px; }
+    .field-group label {
+      display:block; font-size:.7rem; color:var(--text-muted);
+      font-weight:700; text-transform:uppercase; margin-bottom:4px;
+    }
+    .field-group input {
+      width:100%; padding:8px 12px; border-radius:8px;
+      background:var(--bg-stat); border:1px solid var(--border);
+      color:var(--text-main); font-size:.85rem; outline:none;
+      transition:border-color .2s;
+    }
+    .field-group input:focus { border-color:var(--primary); }
+    .modal-actions { display:flex; gap:8px; margin-top:16px; }
+    .btn-save {
+      flex:1; background:linear-gradient(135deg,#1d4ed8,#4f46e5);
+      color:#fff; padding:9px; border-radius:8px; border:none;
+      cursor:pointer; font-weight:700; font-size:.82rem;
+      transition:opacity .2s;
+    }
+    .btn-save:hover{ opacity:.9; }
+    .btn-cancel {
+      padding:9px 18px; border-radius:8px;
+      background:var(--bg-stat); color:var(--text-muted);
+      border:1px solid var(--border); cursor:pointer; font-size:.82rem;
+    }
+
+    /* ══ LOG PANEL ════════════════════════════════════ */
+    #log-panel {
+      margin-top: clamp(12px,2vw,20px);
+      background:var(--bg-card); border:1px solid var(--border);
+      border-radius:12px; padding:14px;
+    }
+    .log-header {
+      display:flex; justify-content:space-between; align-items:center;
+      margin-bottom:10px; flex-wrap:wrap; gap:8px;
+    }
+    .log-title { font-size:.82rem; font-weight:700; color:#94a3b8; }
+    .log-count { font-size:.68rem; color:var(--text-muted); }
+    #log-table-wrap { overflow-x:auto; max-height:180px; overflow-y:auto; }
+    #log-table-wrap::-webkit-scrollbar{ height:4px; width:4px; }
+    #log-table-wrap::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+    table { width:100%; border-collapse:collapse; font-size:.7rem; }
+    th {
+      background:var(--bg-stat); color:var(--text-muted);
+      padding:6px 10px; text-align:left; font-weight:700;
+      text-transform:uppercase; letter-spacing:.4px;
+      position:sticky; top:0;
+    }
+    td { padding:5px 10px; border-bottom:1px solid #1e293b55; color:#cbd5e1; }
+    tr:last-child td { border-bottom:none; }
+    tr:hover td { background:#ffffff05; }
+
+    /* ══ FOOTER ═══════════════════════════════════════ */
+    .footer {
+      text-align:center; padding:14px;
+      font-size:.66rem; color:var(--text-muted);
+      border-top:1px solid var(--border); margin-top:8px;
+    }
+
+    /* ══ uPlot override ═══════════════════════════════ */
+    .u-legend { display:none; }
+
+    /* ══ SCROLLBAR ════════════════════════════════════ */
+    ::-webkit-scrollbar{ width:5px; }
+    ::-webkit-scrollbar-track{ background:var(--bg-main); }
+    ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
+  </style>
+</head>
+<body>
+
+<!-- ══ TOP BAR ══════════════════════════════════════ -->
+<header class="top-bar">
+  <div class="top-left">
+    <div class="logo-icon">⚡</div>
+    <div>
+      <h1>3-Axis XYZ Vibration Dashboard</h1>
+      <div class="subtitle">Real-time Multi-Node · Ring Buffer · FFT Worker · Alarm · CSV</div>
+    </div>
+  </div>
+  <div class="top-right">
+    <div class="badge badge-blue">
+      <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+        <path d="M1 2a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2zm0 5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7zm0 5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-2z"/>
+      </svg>
+      HiveMQ
+    </div>
+    <div id="conn-status" class="badge badge-warn">
+      <span class="dot pulse"></span> Connecting...
+    </div>
+    <button class="btn btn-alarm" onclick="openThresholdModal()">⚙️ Thresholds</button>
+    <button class="btn btn-csv"   onclick="exportCSV()">📥 Export CSV</button>
+  </div>
+</header>
+
+<!-- ══ ALARM BANNER ══════════════════════════════════ -->
+<div id="alarm-banner">⚠️ ALARM DETECTED — Check nodes below</div>
+
+<!-- ══ DASHBOARD ═════════════════════════════════════ -->
+<main class="main-content">
+  <div id="dashboard">
+    <div class="waiting-state">
+      <div class="spinner"></div>
+      <div style="font-weight:600;font-size:.9rem;">Waiting for sensor data...</div>
+      <div style="font-size:.74rem;">Topic: <code style="color:#60a5fa;background:#1e3a5f33;padding:2px 6px;border-radius:4px;">factory/vibration/live</code></div>
+    </div>
+  </div>
+
+  <!-- LOG PANEL -->
+  <div id="log-panel">
+    <div class="log-header">
+      <span class="log-title">📋 Data Log</span>
+      <span class="log-count" id="log-count">0 records</span>
+    </div>
+    <div id="log-table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th><th>Node</th>
+            <th>RMS</th><th>Peak</th><th>Freq</th><th>Temp</th><th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+</main>
+
+<footer class="footer">
+  3-Axis XYZ Vibration Monitor &nbsp;·&nbsp;
+  <span style="color:#f43f5e;font-weight:700;">X</span>
+  <span style="color:#10b981;font-weight:700;">Y</span>
+  <span style="color:#3b82f6;font-weight:700;">Z</span>
+  &nbsp;·&nbsp; Ring Buffer · EMA · FFT Worker · Alarm · Trend · CSV Logger
+</footer>
+
+<!-- ══ THRESHOLD MODAL ═════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <h3>⚙️ Alarm Thresholds</h3>
+    <div class="modal-grid">
+      <div class="field-group">
+        <label>Max RMS (mm/s)</label>
+        <input type="number" id="th-rms"  step="0.1" value="7.5">
+      </div>
+      <div class="field-group">
+        <label>Max Peak (G)</label>
+        <input type="number" id="th-peak" step="0.1" value="15.0">
+      </div>
+      <div class="field-group">
+        <label>Max Frequency (Hz)</label>
+        <input type="number" id="th-freq" step="1"   value="200">
+      </div>
+      <div class="field-group">
+        <label>Max Temperature (°C)</label>
+        <input type="number" id="th-temp" step="0.5" value="80">
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-save"   onclick="saveThresholds()">💾 Save</button>
+      <button class="btn-cancel" onclick="closeThresholdModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════
+     JAVASCRIPT — ALL TECHNIQUES COMBINED
+══════════════════════════════════════════════════ -->
+<script>
+'use strict';
+
+/* ════════════════════════════════════════════════════
+   1. CONSTANTS & CONFIG
+════════════════════════════════════════════════════ */
+const CHART_H   = 160;
+const BUF_SIZE  = 128;
+const FFT_SIZE  = 128;
+const RES       = 1000 / 512;
+const EMA_ALPHA = 0.28;           // smoothing factor (0=max smooth, 1=no smooth)
+const LOG_MAX   = 2000;           // max log rows in memory
+
+const waveXArr  = Float32Array.from({ length: BUF_SIZE }, (_, i) => i);
+const fftXArr   = Float32Array.from({ length: FFT_SIZE  }, (_, i) => (i + 4) * RES);
+const waveX     = Array.from(waveXArr);
+const fftX      = Array.from(fftXArr);
+const emptyF    = () => new Array(BUF_SIZE).fill(0);
+const fmtV      = (u, v) => v == null ? '--' : v.toFixed(2) + ' mm/s';
+
+/* ════════════════════════════════════════════════════
+   2. ALARM THRESHOLDS (mutable)
+════════════════════════════════════════════════════ */
+let THRESHOLDS = { rms: 7.5, peak: 15.0, freq: 200, temp: 80 };
+
+function openThresholdModal() {
+  document.getElementById('th-rms').value  = THRESHOLDS.rms;
+  document.getElementById('th-peak').value = THRESHOLDS.peak;
+  document.getElementById('th-freq').value = THRESHOLDS.freq;
+  document.getElementById('th-temp').value = THRESHOLDS.temp;
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeThresholdModal() {
+  document.getElementById('modal-overlay').classList.remove('open');
+}
+function saveThresholds() {
+  THRESHOLDS.rms  = parseFloat(document.getElementById('th-rms').value)  || 7.5;
+  THRESHOLDS.peak = parseFloat(document.getElementById('th-peak').value) || 15;
+  THRESHOLDS.freq = parseFloat(document.getElementById('th-freq').value) || 200;
+  THRESHOLDS.temp = parseFloat(document.getElementById('th-temp').value) || 80;
+  closeThresholdModal();
+}
+// Close modal on overlay click
+document.getElementById('modal-overlay').addEventListener('click', (e) => {
+  if (e.target === e.currentTarget) closeThresholdModal();
+});
+
+/* ════════════════════════════════════════════════════
+   3. RING BUFFER — Float32Array based
+════════════════════════════════════════════════════ */
+class RingBuffer {
+  constructor(size) {
+    this.size = size;
+    this.buf  = new Float32Array(size);
+    this.ptr  = 0;
+    this.full = false;
   }
-};
+  push(v) {
+    this.buf[this.ptr] = v;
+    this.ptr = (this.ptr + 1) % this.size;
+    if (this.ptr === 0) this.full = true;
+  }
+  pushArray(arr) { for (const v of arr) this.push(v); }
+  toArray() {
+    const out = new Array(this.size);
+    for (let i = 0; i < this.size; i++)
+      out[i] = this.buf[(this.ptr + i) % this.size];
+    return out;
+  }
+}
 
-struct NodeData {
-  int modbusAddress;
-  String deviceId;
-  FeatureAccumulator window;
-};
-
-// 🟢 ตั้งค่ากล่องเซนเซอร์ลูกข่าย (Slave Nodes)
-const int NODE_COUNT = 2;
-NodeData nodes[NODE_COUNT] = {
-  {13, "NOED511-23", {}}, 
-  {14, "NOED511-25", {}}  
-};
-
-// =====================================================
-// 🛠️ FUNCTIONS
-// =====================================================
-
-void feedWatchdog() { esp_task_wdt_reset(); }
-
-void reconnectMQTT() {
-  if (WiFi.status() != WL_CONNECTED) return;
-  if (!mqtt.connected()) {
-    Serial.print("[MQTT] Connecting to HiveMQ Cloud...");
-    String clientId = "Gateway-ESP32-" + String(random(0xffff), HEX);
-    
-    // ส่ง Username และ Password เพื่อยืนยันตัวตนกับเซิร์ฟเวอร์
-    if (mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
-      Serial.println(" Connected!");
+/* ════════════════════════════════════════════════════
+   4. EMA SMOOTHER — per-channel
+════════════════════════════════════════════════════ */
+class EmaSmoother {
+  constructor(size, alpha = EMA_ALPHA) {
+    this.alpha = alpha;
+    this.prev  = new Float32Array(size);
+    this.ready = false;
+  }
+  smooth(arr) {
+    const a = this.alpha, b = 1 - a;
+    const out = new Array(arr.length);
+    if (!this.ready) {
+      for (let i = 0; i < arr.length; i++) out[i] = this.prev[i] = arr[i];
+      this.ready = true;
     } else {
-      Serial.print(" failed, rc=");
-      Serial.println(mqtt.state());
-    }
-  }
-}
-
-void sendBatchToGoogle() {
-  bool hasAnyData = false;
-  for (int i = 0; i < NODE_COUNT; i++) {
-    if (nodes[i].window.hasData && nodes[i].window.count > 0) hasAnyData = true;
-  }
-  if (!hasAnyData || WiFi.status() != WL_CONNECTED) return;
-
-  int currentRSSI = WiFi.RSSI(); 
-
-  String payload = "[";
-  int addedCount = 0;
-  for (int i = 0; i < NODE_COUNT; i++) {
-    if (nodes[i].window.hasData && nodes[i].window.count > 0) {
-      if (addedCount > 0) payload += ",";
-      FeatureAccumulator& win = nodes[i].window;
-      float avgRmsVel = win.sumRmsVel / win.count;
-      float avgTemp = win.sumTemp / win.count;
-
-      payload += "{";
-      payload += "\"id\":\"" + nodes[i].deviceId + "\",";
-      payload += "\"peak\":" + String(win.maxPeakAcc, 3) + ",";
-      payload += "\"rms\":" + String(avgRmsVel, 3) + ","; 
-      payload += "\"freq\":" + String(win.maxDomFreq, 1) + ","; 
-      payload += "\"temp\":" + String(avgTemp, 2) + ",";
-      payload += "\"rssi\":" + String(currentRSSI); 
-      payload += "}";
-      addedCount++;
-    }
-  }
-  payload += "]";
-
-  WiFiClientSecure client; 
-  client.setInsecure(); // ยอมรับการเชื่อมต่อ HTTPS โดยไม่ตรวจใบรับรอง
-  HTTPClient https;
-  https.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
-  https.setTimeout(20000);
-
-  Serial.println("\n[HTTP] Sending 1-MIN BATCH to Google Sheets...");
-  if (https.begin(client, GAS_URL)) {
-    https.addHeader("Content-Type", "application/json");
-    int httpCode = https.POST(payload);
-    Serial.printf("[HTTP] POST Result Code: %d\n", httpCode);
-    https.end();
-  }
-
-  // เคลียร์ค่าที่สะสมไว้หลังส่งเสร็จ
-  for (int i = 0; i < NODE_COUNT; i++) nodes[i].window.clear();
-}
-
-void parseAndPublishLive(char* row) {
-  // ค้นหาตำแหน่งของ Pipe (|) เพื่อแยกว่าเป็น 1 แกน หรือ 3 แกน
-  char* p1 = strchr(row, '|'); if (!p1) return;
-  char* p2 = strchr(p1 + 1, '|'); if (!p2) return;
-  char* p3 = strchr(p2 + 1, '|');
-  char* p4 = p3 ? strchr(p3 + 1, '|') : NULL;
-  char* p5 = p4 ? strchr(p4 + 1, '|') : NULL;
-  char* p6 = p5 ? strchr(p5 + 1, '|') : NULL;
-
-  char* statsStr = row; 
-  char *waveX="", *waveY="", *waveZ="", *fftX="", *fftY="", *fftZ="";
-
-  if (p1 && p2 && p3 && p4 && p5 && p6) {
-    // 🟢 โหมด 3 แกน (XYZ)
-    *p1 = '\0'; *p2 = '\0'; *p3 = '\0'; *p4 = '\0'; *p5 = '\0'; *p6 = '\0';
-    waveX = p1 + 1; waveY = p2 + 1; waveZ = p3 + 1;
-    fftX = p4 + 1;  fftY = p5 + 1;  fftZ = p6 + 1;
-  } else if (p1 && p2) {
-    // 🟡 โหมด 1 แกน (รูปแบบเดิม)
-    *p1 = '\0'; *p2 = '\0';
-    waveX = p1 + 1; 
-    fftX = p2 + 1;
-  } else {
-    return; // ข้อมูลไม่สมบูรณ์
-  }
-
-  // หั่นข้อมูลส่วนสถิติ (ID, Peak, RMS, ...)
-  char* saveptr;
-  char* idToken = strtok_r(statsStr, ",", &saveptr);
-  char* seqToken = strtok_r(NULL, ",", &saveptr);
-  char* peakToken = strtok_r(NULL, ",", &saveptr);
-  char* rmsToken = strtok_r(NULL, ",", &saveptr);
-  char* freqToken = strtok_r(NULL, ",", &saveptr);
-  char* tempToken = strtok_r(NULL, ",", &saveptr);
-
-  if (idToken && peakToken && rmsToken && freqToken && tempToken) {
-    float peak = atof(peakToken);
-    float rms = atof(rmsToken);
-    float freq = atof(freqToken);
-    float temp = atof(tempToken);
-
-    // เก็บสะสมค่าสถิติเตรียมส่งไป Google Sheet
-    for (int i = 0; i < NODE_COUNT; i++) {
-      if (nodes[i].deviceId == String(idToken)) {
-        nodes[i].window.hasData = true;
-        nodes[i].window.count++;
-        nodes[i].window.sumRmsVel += rms;
-        nodes[i].window.sumTemp += temp;
-        if (peak > nodes[i].window.maxPeakAcc) nodes[i].window.maxPeakAcc = peak;
-        if (freq > nodes[i].window.maxDomFreq) nodes[i].window.maxDomFreq = freq;
-        break;
+      for (let i = 0; i < arr.length; i++) {
+        this.prev[i] = a * arr[i] + b * this.prev[i];
+        out[i] = this.prev[i];
       }
     }
+    return out;
+  }
+}
 
-    // แพ็กข้อมูล JSON ยิงขึ้นหน้าเว็บผ่าน MQTT
-    if (mqtt.connected()) {
-      static char mqttPayload[8192]; 
-      
-      if (p6) { 
-        // สร้าง JSON แบบ 3 แกน
-        snprintf(mqttPayload, sizeof(mqttPayload),
-                 "{\"id\":\"%s\",\"peak\":%.2f,\"rms\":%.2f,\"freq\":%.1f,\"temp\":%.1f,\"waveX\":[%s],\"waveY\":[%s],\"waveZ\":[%s],\"fftX\":[%s],\"fftY\":[%s],\"fftZ\":[%s]}",
-                 idToken, peak, rms, freq, temp, waveX, waveY, waveZ, fftX, fftY, fftZ);
-      } else {
-        // สร้าง JSON แบบ 1 แกน
-        snprintf(mqttPayload, sizeof(mqttPayload),
-                 "{\"id\":\"%s\",\"peak\":%.2f,\"rms\":%.2f,\"freq\":%.1f,\"temp\":%.1f,\"waveX\":[%s],\"fftX\":[%s]}",
-                 idToken, peak, rms, freq, temp, waveX, fftX);
+/* ════════════════════════════════════════════════════
+   5. WEB WORKER — Inline Blob FFT Worker
+   (ใช้ Cooley–Tukey radix-2 DIT FFT จริง)
+════════════════════════════════════════════════════ */
+const FFT_WORKER_CODE = `
+function fft(re, im) {
+  const n = re.length;
+  if (n <= 1) return;
+  for (let i=1,j=0; i<n; i++) {
+    let bit = n>>1;
+    for (; j&bit; bit>>=1) j^=bit;
+    j^=bit;
+    if (i<j){ [re[i],re[j]]=[re[j],re[i]]; [im[i],im[j]]=[im[j],im[i]]; }
+  }
+  for (let len=2; len<=n; len<<=1) {
+    const ang = -2*Math.PI/len;
+    const wRe=Math.cos(ang), wIm=Math.sin(ang);
+    for (let i=0; i<n; i+=len) {
+      let curRe=1, curIm=0;
+      for (let j=0; j<len/2; j++) {
+        const uRe=re[i+j], uIm=im[i+j];
+        const vRe=re[i+j+len/2]*curRe - im[i+j+len/2]*curIm;
+        const vIm=re[i+j+len/2]*curIm + im[i+j+len/2]*curRe;
+        re[i+j]=uRe+vRe; im[i+j]=uIm+vIm;
+        re[i+j+len/2]=uRe-vRe; im[i+j+len/2]=uIm-vIm;
+        const nRe=curRe*wRe-curIm*wIm;
+        curIm=curRe*wIm+curIm*wRe; curRe=nRe;
       }
-
-      digitalWrite(SEND_LED_PIN, HIGH);
-      mqtt.publish(MQTT_TOPIC_LIVE, mqttPayload);
-      digitalWrite(SEND_LED_PIN, LOW);
     }
   }
 }
+self.onmessage = function(e) {
+  const { id, x, y, z } = e.data;
+  const n = x.length;
+  function calcMag(sig) {
+    const re = sig.slice(), im = new Array(n).fill(0);
+    fft(re, im);
+    return re.slice(0, n/2).map((_,i) => Math.sqrt(re[i]*re[i]+im[i]*im[i]) / (n/2));
+  }
+  self.postMessage({ id, fx: calcMag(x), fy: calcMag(y), fz: calcMag(z) });
+};
+`;
+const fftWorkerBlob = new Blob([FFT_WORKER_CODE], { type: 'application/javascript' });
+const fftWorkerURL  = URL.createObjectURL(fftWorkerBlob);
+const fftWorker     = new Worker(fftWorkerURL);
 
-// =====================================================
-// 🚀 SETUP & LOOP
-// =====================================================
-
-void setup() {
-  Serial.begin(115200); 
-  esp_task_wdt_init(30, true); esp_task_wdt_add(NULL);
-
-  pinMode(WIFI_LED_PIN, OUTPUT); digitalWrite(WIFI_LED_PIN, LOW);
-  pinMode(SEND_LED_PIN, OUTPUT); digitalWrite(SEND_LED_PIN, LOW);
-  pinMode(RX_LED_PIN, OUTPUT);   digitalWrite(RX_LED_PIN, LOW);
-  pinMode(RELAY_PIN, OUTPUT);    digitalWrite(RELAY_PIN, HIGH); 
-
-  RS485Serial.begin(115200, SERIAL_8N1, RS485_RX, RS485_TX); 
-  
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(WIFI_SSID, WIFI_PASS);
-  
-  while (WiFi.status() != WL_CONNECTED) { delay(500); feedWatchdog(); }
-  Serial.println("\n[WiFi] Connected!");
-
-  // ข้ามการตรวจสอบใบรับรอง SSL/TLS (สำคัญมากสำหรับ HiveMQ)
-  espClient.setInsecure(); 
-
-  mqtt.setServer(MQTT_SERVER, MQTT_PORT);
-  mqtt.setBufferSize(8192); // ขยาย Buffer เพื่อรองรับ 3 แกน
-  
-  lastBatchMs = millis();
+/* ════════════════════════════════════════════════════
+   6. TREND INDICATOR
+════════════════════════════════════════════════════ */
+const prevValues = {};
+function getTrend(id, key, cur) {
+  const k    = `${id}_${key}`;
+  const prev = prevValues[k] ?? cur;
+  prevValues[k] = cur;
+  if (cur > prev * 1.05) return { arrow: '▲', color: '#ef4444' };
+  if (cur < prev * 0.95) return { arrow: '▼', color: '#10b981' };
+  return { arrow: '●', color: '#64748b' };
 }
 
-void loop() {
-  feedWatchdog(); yield();
+/* ════════════════════════════════════════════════════
+   7. CSV LOGGER
+════════════════════════════════════════════════════ */
+const dataLog = [];
 
-  if (WiFi.status() == WL_CONNECTED) digitalWrite(WIFI_LED_PIN, HIGH);
-  else digitalWrite(WIFI_LED_PIN, LOW);
+function logEntry(node, isAlarm) {
+  const now = new Date();
+  dataLog.push({
+    time:  now.toISOString(),
+    id:    node.id,
+    rms:   (node.rms  || 0).toFixed(3),
+    peak:  (node.peak || 0).toFixed(3),
+    freq:  (node.freq || 0).toFixed(2),
+    temp:  (node.temp || 0).toFixed(2),
+    alarm: isAlarm ? 'ALARM' : 'OK'
+  });
+  if (dataLog.length > LOG_MAX) dataLog.shift();
+  updateLogTable(dataLog[dataLog.length - 1]);
+  document.getElementById('log-count').textContent =
+    `${dataLog.length.toLocaleString()} records`;
+}
 
-  if (!mqtt.connected()) reconnectMQTT();
-  mqtt.loop(); 
+function updateLogTable(row) {
+  const tbody = document.getElementById('log-tbody');
+  const tr    = document.createElement('tr');
+  const t     = new Date(row.time);
+  const ts    = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+  tr.innerHTML = `
+    <td>${ts}</td>
+    <td style="color:#60a5fa;font-weight:700;">${esc(row.id)}</td>
+    <td>${row.rms}</td>
+    <td>${row.peak}</td>
+    <td>${row.freq}</td>
+    <td>${row.temp}</td>
+    <td style="color:${row.alarm==='ALARM'?'#f87171':'#34d399'};font-weight:700;">${row.alarm}</td>`;
+  tbody.insertBefore(tr, tbody.firstChild);
+  // keep DOM rows capped
+  while (tbody.children.length > 200) tbody.removeChild(tbody.lastChild);
+}
 
-  // Poll ข้อมูลผ่าน RS485 ทุกๆ 1.5 วินาที
-  if (millis() - lastPollMs >= 1500) { 
-    lastPollMs = millis();
-    digitalWrite(RS485_DE_RE, HIGH); delay(2);
-    RS485Serial.print("R," + String(nodes[pollIndex].modbusAddress) + "\n");
-    RS485Serial.flush(); delay(2); digitalWrite(RS485_DE_RE, LOW);
-    pollIndex = (pollIndex + 1) % NODE_COUNT;
+function exportCSV() {
+  if (!dataLog.length) { alert('No data to export yet.'); return; }
+  const hdr  = 'time,node,rms_mm_s,peak_G,dom_freq_Hz,temp_C,status\n';
+  const rows = dataLog.map(r =>
+    `${r.time},${r.id},${r.rms},${r.peak},${r.freq},${r.temp},${r.alarm}`
+  ).join('\n');
+  const blob = new Blob([hdr + rows], { type: 'text/csv;charset=utf-8;' });
+  const url  = URL.createObjectURL(blob);
+  const a    = Object.assign(document.createElement('a'), {
+    href: url,
+    download: `vibration_${Date.now()}.csv`
+  });
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+/* ════════════════════════════════════════════════════
+   8. ALARM CHECK — visual + notification
+════════════════════════════════════════════════════ */
+// Request notification permission once
+if ('Notification' in window && Notification.permission === 'default') {
+  Notification.requestPermission();
+}
+
+const alarmCooldown = {};   // debounce per node (5s)
+
+function checkAlarm(node) {
+  const isAlarm =
+    (node.rms  || 0) > THRESHOLDS.rms  ||
+    (node.peak || 0) > THRESHOLDS.peak ||
+    (node.freq || 0) > THRESHOLDS.freq ||
+    (node.temp || 0) > THRESHOLDS.temp;
+
+  const card     = document.getElementById(`node-card-${node.id}`);
+  const alarmTag = document.getElementById(`alarm-tag-${node.id}`);
+  if (card) {
+    card.classList.toggle('alarm', isAlarm);
+  }
+  if (alarmTag) {
+    alarmTag.style.display = isAlarm ? 'inline-flex' : 'none';
   }
 
-  if (RS485Serial.available()) digitalWrite(RX_LED_PIN, HIGH);
-  else digitalWrite(RX_LED_PIN, LOW);
+  // Global banner
+  const anyAlarm = Object.keys(activeNodes).some(id => nodeAlarmState[id]);
+  document.getElementById('alarm-banner').style.display = anyAlarm ? 'block' : 'none';
 
-
-// รับข้อมูลแบบ C-String ไร้การจองแรมใหม่ (ป้องกันบอร์ดค้าง)
-  while (RS485Serial.available()) {
-    feedWatchdog();
-    char c = RS485Serial.read();
-    
-    if (c == '\n') {
-      lineBuffer[lineIndex] = '\0'; 
-      if (lineIndex > 50) {
-        
-        // 🟢 เพิ่มบรรทัดนี้ เพื่อแสดงค่าที่รับมาจาก Slave Node
-        // Serial.print("[RS485 RX] Data Length: ");
-        // Serial.println(lineIndex); // โชว์ขนาดความยาวของข้อความก่อน
-        // Serial.println(lineBuffer); // โชว์ข้อมูลดิบทั้งหมด
-        
-        parseAndPublishLive(lineBuffer); 
+  // Browser Notification (debounced 5s per node)
+  if (isAlarm) {
+    const now = Date.now();
+    if (!alarmCooldown[node.id] || now - alarmCooldown[node.id] > 5000) {
+      alarmCooldown[node.id] = now;
+      if (Notification.permission === 'granted') {
+        new Notification(`⚠️ ALARM: Node ${node.id}`, {
+          body: `RMS:${(node.rms||0).toFixed(2)} | Peak:${(node.peak||0).toFixed(2)} | Temp:${(node.temp||0).toFixed(1)}°C`,
+          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="14">⚡</text></svg>'
+        });
       }
-      lineIndex = 0; 
-      
-    } else if (c >= 32 && c <= 126 && lineIndex < MAX_LINE_LENGTH - 1) {
-      lineBuffer[lineIndex++] = c; 
     }
   }
-  // ส่งข้อมูลเข้า Google Sheet ทุกๆ 60 วินาที
-  if (millis() - lastBatchMs >= 60000) {
-    sendBatchToGoogle();
-    lastBatchMs = millis();
-  }
+  return isAlarm;
 }
+
+/* ════════════════════════════════════════════════════
+   9. STATE
+════════════════════════════════════════════════════ */
+let activeNodes      = {};
+let nodeAlarmState   = {};
+let charts           = {};
+let ringBuffers      = {};    // { id: { wx, wy, wz } }
+let emaSmoothers     = {};    // { id: { wx, wy, wz } }
+let isDashboardDirty = false;
+let pendingFFT       = {};    // { id: payload } waiting for worker result
+
+/* ════════════════════════════════════════════════════
+   10. FFT WORKER RESULT HANDLER
+════════════════════════════════════════════════════ */
+fftWorker.onmessage = (e) => {
+  const { id, fx, fy, fz } = e.data;
+  if (!activeNodes[id]) return;
+  activeNodes[id]._fftX = fx;
+  activeNodes[id]._fftY = fy;
+  activeNodes[id]._fftZ = fz;
+  isDashboardDirty = true;
+};
+
+/* ════════════════════════════════════════════════════
+   11. uPLOT OPTIONS
+════════════════════════════════════════════════════ */
+function makeWaveOpts(w) {
+  return {
+    width: w, height: CHART_H,
+    scales: {
+      x: { time: false },
+      y: { range: (u,mn,mx) => [mn<-10?mn*1.2:-10, mx>10?mx*1.2:10] }
+    },
+    axes: [
+      { show: false },
+      {
+        stroke:'#475569', size:40,
+        grid:{ stroke:'#1e293b88', width:1 },
+        ticks:{ stroke:'#1e293b88', width:1 },
+        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(1):'')
+      }
+    ],
+    series: [
+      {},
+      { label:'X', stroke:'#f43f5e', width:1.8, points:{show:false}, value:fmtV },
+      { label:'Y', stroke:'#10b981', width:1.8, points:{show:false}, value:fmtV },
+      { label:'Z', stroke:'#3b82f6', width:1.8, points:{show:false}, value:fmtV }
+    ],
+    cursor:{ show:false }, padding:[8,4,4,0]
+  };
+}
+function makeFftOpts(w) {
+  return {
+    width: w, height: CHART_H,
+    scales: {
+      x: { time: false },
+      y: { range: (u,mn,mx) => [0, mx>10?mx*1.2:10] }
+    },
+    axes: [
+      {
+        stroke:'#475569', size:28,
+        grid:{ show:false }, ticks:{ stroke:'#1e293b88', width:1 },
+        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(0)+'Hz':'')
+      },
+      {
+        stroke:'#475569', size:40,
+        grid:{ stroke:'#1e293b88', width:1 },
+        ticks:{ stroke:'#1e293b88', width:1 },
+        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(1):'')
+      }
+    ],
+    series: [
+      {},
+      { label:'X', stroke:'#f43f5e', width:1.8, points:{show:false}, value:fmtV },
+      { label:'Y', stroke:'#10b981', width:1.8, points:{show:false}, value:fmtV },
+      { label:'Z', stroke:'#3b82f6', width:1.8, points:{show:false}, value:fmtV }
+    ],
+    cursor:{ show:false }, padding:[8,4,4,0]
+  };
+}
+
+/* ════════════════════════════════════════════════════
+   12. INIT CHARTS (after DOM paint)
+════════════════════════════════════════════════════ */
+function initChartsForNode(id) {
+  const wEl = document.getElementById(`chart-wave-${id}`);
+  const fEl = document.getElementById(`chart-fft-${id}`);
+  if (!wEl || !fEl) return false;
+  const w = wEl.getBoundingClientRect().width;
+  if (w < 10) return false;
+
+  const e = emptyF();
+  charts[id] = {
+    wave: new uPlot(makeWaveOpts(w), [waveX, e, [...e], [...e]], wEl),
+    fft:  new uPlot(makeFftOpts(w),  [fftX,  e, [...e], [...e]], fEl)
+  };
+
+  // apply existing data immediately
+  applyChartData(id);
+
+  const ro = new ResizeObserver(() => {
+    if (!charts[id]) return;
+    const nw = wEl.getBoundingClientRect().width;
+    if (nw < 10) return;
+    charts[id].wave.setSize({ width: nw, height: CHART_H });
+    charts[id].fft.setSize({ width: nw, height: CHART_H });
+  });
+  ro.observe(wEl);
+  return true;
+}
+
+/* ════════════════════════════════════════════════════
+   13. APPLY CHART DATA (Ring Buffer + EMA)
+════════════════════════════════════════════════════ */
+function applyChartData(id) {
+  if (!charts[id]) return;
+  const n   = activeNodes[id];
+  if (!n)    return;
+  const rb  = ringBuffers[id];
+  const ema = emaSmoothers[id];
+  if (!rb || !ema) return;
+
+  const wx = ema.wx.smooth(rb.wx.toArray());
+  const wy = ema.wy.smooth(rb.wy.toArray());
+  const wz = ema.wz.smooth(rb.wz.toArray());
+
+  charts[id].wave.setData([waveX, wx, wy, wz]);
+
+  // FFT: use worker result if available, else raw
+  const fx = n._fftX || n.fftX || emptyF();
+  const fy = n._fftY || n.fftY || emptyF();
+  const fz = n._fftZ || n.fftZ || emptyF();
+  charts[id].fft.setData([fftX, fx, fy, fz]);
+}
+
+/* ════════════════════════════════════════════════════
+   14. HELPERS
+════════════════════════════════════════════════════ */
+function esc(s) {
+  return String(s).replace(/[&<>"']/g,
+    c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
+  );
+}
+function setStat(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.textContent = val;
+}
+function setTrend(elId, trend) {
+  const el = document.getElementById(elId);
+  if (el) { el.textContent = trend.arrow; el.style.color = trend.color; }
+}
+
+/* ════════════════════════════════════════════════════
+   15. MAIN DASHBOARD UPDATE
+════════════════════════════════════════════════════ */
+function updateDashboard() {
+  const container = document.getElementById('dashboard');
+  const ws = container.querySelector('.waiting-state');
+  if (ws) ws.remove();
+
+  Object.keys(activeNodes).forEach((id) => {
+    const n      = activeNodes[id];
+    const cardId = `node-card-${id}`;
+    let   card   = document.getElementById(cardId);
+
+    /* ── Build Ring Buffers & Smoothers for new node ── */
+    if (!ringBuffers[id]) {
+      ringBuffers[id]  = { wx: new RingBuffer(BUF_SIZE), wy: new RingBuffer(BUF_SIZE), wz: new RingBuffer(BUF_SIZE) };
+      emaSmoothers[id] = { wx: new EmaSmoother(BUF_SIZE), wy: new EmaSmoother(BUF_SIZE), wz: new EmaSmoother(BUF_SIZE) };
+    }
+
+    /* ── Fill Ring Buffer ── */
+    const rawX = n.waveX || n.wave || emptyF();
+    const rawY = n.waveY || emptyF();
+    const rawZ = n.waveZ || emptyF();
+    ringBuffers[id].wx.pushArray(rawX);
+    ringBuffers[id].wy.pushArray(rawY);
+    ringBuffers[id].wz.pushArray(rawZ);
+
+    /* ── Dispatch FFT Worker ── */
+    fftWorker.postMessage({
+      id,
+      x: Array.from(ringBuffers[id].wx.toArray()),
+      y: Array.from(ringBuffers[id].wy.toArray()),
+      z: Array.from(ringBuffers[id].wz.toArray())
+    });
+
+    /* ── Build Card HTML if not exist ── */
+    if (!card) {
+      container.insertAdjacentHTML('beforeend', `
+        <div class="node-container" id="${cardId}">
+          <div class="node-header">
+            <div class="node-title">
+              <div class="node-icon">🏭</div>
+              Node: ${esc(String(n.id))}
+            </div>
+            <div style="display:flex;gap:6px;align-items:center;">
+              <span class="alarm-tag" id="alarm-tag-${id}">⚠️ ALARM</span>
+              <span class="live-badge">● LIVE</span>
+            </div>
+          </div>
+
+          <div class="node-stats">
+            <div class="stat-card">
+              <div class="stat-icon">📊</div>
+              <div class="stat-label">Max RMS</div>
+              <div class="stat-row">
+                <span class="stat-value" style="color:#60a5fa" id="val-rms-${id}">--</span>
+                <span class="stat-trend" id="trend-rms-${id}">●</span>
+              </div>
+              <div class="stat-unit">mm/s</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">📈</div>
+              <div class="stat-label">Max Peak</div>
+              <div class="stat-row">
+                <span class="stat-value" style="color:#a78bfa" id="val-peak-${id}">--</span>
+                <span class="stat-trend" id="trend-peak-${id}">●</span>
+              </div>
+              <div class="stat-unit">G</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🎵</div>
+              <div class="stat-label">Dom Freq</div>
+              <div class="stat-row">
+                <span class="stat-value" style="color:#f59e0b" id="val-freq-${id}">--</span>
+                <span class="stat-trend" id="trend-freq-${id}">●</span>
+              </div>
+              <div class="stat-unit">Hz</div>
+            </div>
+            <div class="stat-card">
+              <div class="stat-icon">🌡️</div>
+              <div class="stat-label">Temperature</div>
+              <div class="stat-row">
+                <span class="stat-value" style="color:#10b981" id="val-temp-${id}">--</span>
+                <span class="stat-trend" id="trend-temp-${id}">●</span>
+              </div>
+              <div class="stat-unit">°C</div>
+            </div>
+          </div>
+
+          <div class="graph-grid">
+            <div class="graph-block">
+              <div class="graph-header">
+                <span class="graph-title">
+                  <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#10b981"/></svg>
+                  Time Waveform <small style="color:#475569;font-weight:400;">(EMA)</small>
+                </span>
+                <span class="graph-unit">mm/s</span>
+              </div>
+              <div class="chart-wrap" id="chart-wave-${id}"></div>
+              <div class="axis-legend">
+                <span class="leg-x">X</span>
+                <span class="leg-y">Y</span>
+                <span class="leg-z">Z</span>
+              </div>
+            </div>
+            <div class="graph-block">
+              <div class="graph-header">
+                <span class="graph-title">
+                  <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#3b82f6"/></svg>
+                  FFT Spectrum <small style="color:#475569;font-weight:400;">(Worker)</small>
+                </span>
+                <span class="graph-unit">mm/s</span>
+              </div>
+              <div class="chart-wrap" id="chart-fft-${id}"></div>
+              <div class="axis-legend">
+                <span class="leg-x">X</span>
+                <span class="leg-y">Y</span>
+                <span class="leg-z">Z</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `);
+
+      /* Init charts after DOM paint */
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          if (!initChartsForNode(id)) {
+            setTimeout(() => initChartsForNode(id), 120);
+          }
+        });
+      });
+    }
+
+    /* ── Update Stats + Trend ── */
+    const rms  = n.rms  || 0;
+    const peak = n.peak || 0;
+    const freq = n.freq || 0;
+    const temp = n.temp || 0;
+
+    setStat(`val-rms-${id}`,  rms.toFixed(2));
+    setStat(`val-peak-${id}`, peak.toFixed(2));
+    setStat(`val-freq-${id}`, freq.toFixed(1));
+    setStat(`val-temp-${id}`, temp.toFixed(1));
+
+    setTrend(`trend-rms-${id}`,  getTrend(id, 'rms',  rms));
+    setTrend(`trend-peak-${id}`, getTrend(id, 'peak', peak));
+    setTrend(`trend-freq-${id}`, getTrend(id, 'freq', freq));
+    setTrend(`trend-temp-${id}`, getTrend(id, 'temp', temp));
+
+    /* ── Alarm Check ── */
+    const isAlarm = checkAlarm(n);
+    nodeAlarmState[id] = isAlarm;
+
+    /* ── Log Entry ── */
+    logEntry(n, isAlarm);
+
+    /* ── Update Charts ── */
+    applyChartData(id);
+  });
+}
+
+/* ════════════════════════════════════════════════════
+   16. RENDER LOOP — throttled 200ms
+════════════════════════════════════════════════════ */
+setInterval(() => {
+  if (isDashboardDirty) {
+    updateDashboard();
+    isDashboardDirty = false;
+  }
+}, 200);
+
+/* ════════════════════════════════════════════════════
+   17. MQTT — Exponential Backoff
+════════════════════════════════════════════════════ */
+const BROKER = 'wss://4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud:8884/mqtt';
+const TOPIC  = 'factory/vibration/live';
+let retryDelay = 1000;
+
+const mqttClient = mqtt.connect(BROKER, {
+  username:        'vibmonitor',
+  password:        'Mcl19508',
+  clientId:        'WebDash_' + Math.random().toString(16).substr(2, 8),
+  reconnectPeriod: 0,     // manual backoff
+  keepalive:       60,
+  clean:           true
+});
+
+function setStatus(html, cls) {
+  const el = document.getElementById('conn-status');
+  el.innerHTML = html;
+  el.className = `badge ${cls}`;
+}
+
+mqttClient.on('connect', () => {
+  retryDelay = 1000;
+  setStatus('<span class="dot pulse"></span> Connected — XYZ Live', 'badge-online');
+  mqttClient.subscribe(TOPIC, { qos: 1 });
+});
+
+mqttClient.on('message', (topic, message) => {
+  try {
+    const p = JSON.parse(message.toString());
+    if (!p || !p.id) return;
+    activeNodes[p.id] = p;
+    isDashboardDirty  = true;
+  } catch (_) {}
+});
+
+mqttClient.on('offline', () => {
+  setStatus('<span class="dot"></span> Offline', 'badge-offline');
+  // Exponential Backoff
+  retryDelay = Math.min(retryDelay * 2, 30000);
+  setTimeout(() => {
+    setStatus('<span class="dot pulse"></span> Reconnecting...', 'badge-warn');
+    mqttClient.reconnect();
+  }, retryDelay);
+});
+
+mqttClient.on('error', () => {
+  setStatus('<span class="dot"></span> Error', 'badge-offline');
+});
+
+</script>
+</body>
+</html>
