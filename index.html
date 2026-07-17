@@ -1,316 +1,307 @@
-<!DOCTYPE html>
-<html lang="th">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Real-time 3-Axis Vibration Monitor</title>
-  
-  <link rel="stylesheet" href="https://unpkg.com/uplot/dist/uPlot.min.css">
-  <script src="https://unpkg.com/uplot/dist/uPlot.iife.min.js"></script>
-  <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+#include <WiFi.h>
+#include <WiFiClientSecure.h>
+#include <HTTPClient.h>
+#include <esp_task_wdt.h>
+#include <Preferences.h>
+#include <PubSubClient.h> 
 
-  <style>
-    /* 🟢 ชุดสีใหม่ ทันสมัยสไตล์ Modern Dark Mode */
-    :root {
-      --bg-main: #090e17; 
-      --bg-card: #111827; 
-      --bg-graph: #0f172a;
-      --border-color: #1e293b; 
-      --text-main: #f8fafc; 
-      --text-muted: #64748b;
-      --primary: #3b82f6; 
-      --success: #10b981; 
-      --warn: #f59e0b; 
-      --danger: #ef4444;
-      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-    }
+// =====================================================
+// ⚙️ WIFI, MQTT & GAS CONFIG
+// =====================================================
+const char* WIFI_SSID = "CCTV";
+const char* WIFI_PASS = "Master4321";
 
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { 
-      background: radial-gradient(circle at top, #1e293b 0%, var(--bg-main) 40%);
-      color: var(--text-main); 
-      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; 
-      padding: 16px; 
-      min-height: 100vh;
-    }
+// 🟢 ตั้งค่า HiveMQ Cloud (Private Broker)
+const char* MQTT_SERVER = "4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud"; 
+const int MQTT_PORT = 8883; 
+const char* MQTT_USER = "vibmonitor";
+const char* MQTT_PASS = "Mcl19508"; 
+const char* MQTT_TOPIC_LIVE = "factory/vibration/live";
 
-    /* 🟢 ส่วนหัวและป้าย HiveMQ */
-    .header-container {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-      align-items: center;
-      margin-bottom: 24px;
-      text-align: center;
-    }
-    @media (min-width: 768px) {
-      .header-container { flex-direction: row; justify-content: space-between; text-align: left; }
-    }
-    h2 { color: #60a5fa; font-size: 1.5rem; font-weight: 700; letter-spacing: 0.5px; }
-    .server-badge {
-      background: rgba(59, 130, 246, 0.15);
-      color: #60a5fa;
-      padding: 6px 14px;
-      border-radius: 20px;
-      font-size: 0.85rem;
-      font-weight: 600;
-      border: 1px solid rgba(59, 130, 246, 0.3);
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-    }
+// 🟢 URL สำหรับ Google Apps Script (Data Logger)
+const char* GAS_URL = "https://script.google.com/macros/s/AKfycbwmv5BnHvE7kF0puajzsC4jz4VFESSrDLaYBfoiL0zDPkROTfuFw8-v3TB0PmhudZq2/exec";
 
-    /* 🟢 สถานะการเชื่อมต่อ */
-    .status { display: inline-flex; align-items: center; gap: 8px; font-size: 0.85rem; padding: 8px 16px; border-radius: 20px; background: var(--bg-card); border: 1px solid var(--border-color); font-weight: 500; box-shadow: var(--shadow-sm); }
-    .status.online { color: var(--success); border-color: rgba(16, 185, 129, 0.3); background: rgba(16, 185, 129, 0.05); } 
-    .status.offline { color: var(--danger); border-color: rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.05); }
+// ใช้ WiFiClientSecure สำหรับการเชื่อมต่อเข้ารหัส SSL/TLS
+WiFiClientSecure espClient;
+PubSubClient mqtt(espClient);
 
-    /* 🟢 โครงสร้าง Dashboard แบบ Responsive */
-    #dashboard { display: flex; flex-direction: column; gap: 24px; max-width: 1200px; margin: 0 auto; }
-    .node-container { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: 16px; padding: 20px; box-shadow: var(--shadow-md); transition: transform 0.2s; }
-    .node-title { font-size: 1.2rem; font-weight: 700; color: #f1f5f9; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+// =====================================================
+// 📌 HARDWARE PINS
+// =====================================================
+#define WIFI_LED_PIN    19
+#define SEND_LED_PIN    21
+#define RELAY_PIN       5   
+#define RX_LED_PIN      23 
+
+#define RS485_RX       16
+#define RS485_TX       17
+#define RS485_DE_RE     4
+HardwareSerial RS485Serial(2);
+
+// =====================================================
+// 🟢 SYSTEM VARIABLES & STRUCTS (RAM OPTIMIZED)
+// =====================================================
+// ขยาย Buffer เป็น 8192 bytes เพื่อรองรับข้อมูล 3 แกน (XYZ)
+const int MAX_LINE_LENGTH = 8192; 
+char lineBuffer[MAX_LINE_LENGTH]; 
+int lineIndex = 0;                
+
+unsigned long lastPollMs = 0;
+unsigned long lastBatchMs = 0;
+int pollIndex = 0;
+
+struct FeatureAccumulator {
+  bool hasData;
+  uint32_t count;
+  float maxPeakAcc;
+  float sumRmsVel;     
+  float maxDomFreq; 
+  float sumTemp;
+
+  void clear() {
+    hasData = false; count = 0;
+    maxPeakAcc = 0.0f; sumRmsVel = 0.0f; maxDomFreq = 0.0f; sumTemp = 0.0f;
+  }
+};
+
+struct NodeData {
+  int modbusAddress;
+  String deviceId;
+  FeatureAccumulator window;
+};
+
+// 🟢 ตั้งค่ากล่องเซนเซอร์ลูกข่าย (Slave Nodes)
+const int NODE_COUNT = 2;
+NodeData nodes[NODE_COUNT] = {
+  {13, "NOED511-23", {}}, 
+  {14, "NOED511-25", {}}  
+};
+
+// =====================================================
+// 🛠️ FUNCTIONS
+// =====================================================
+
+void feedWatchdog() { esp_task_wdt_reset(); }
+
+void reconnectMQTT() {
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (!mqtt.connected()) {
+    Serial.print("[MQTT] Connecting to HiveMQ Cloud...");
+    String clientId = "Gateway-ESP32-" + String(random(0xffff), HEX);
     
-    /* 🟢 การ์ดแสดงค่าสถิติ */
-    .node-stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin-bottom: 20px; }
-    @media (min-width: 640px) { .node-stats { grid-template-columns: repeat(4, 1fr); } }
-    .stat-card { background: rgba(15, 23, 42, 0.6); padding: 12px; border-radius: 12px; border: 1px solid var(--border-color); text-align: center; }
-    .stat-label { font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600; }
-    .stat-value { font-size: 1.3rem; font-weight: 700; color: var(--primary); }
-    
-    /* 🟢 จัดวางกราฟ */
-    .graph-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
-    @media (min-width: 800px) { .graph-grid { grid-template-columns: 1fr 1fr; } }
-    .graph-block { background: var(--bg-graph); padding: 16px; border-radius: 12px; border: 1px solid var(--border-color); }
-    
-    /* ปรับปรุงหัวกราฟให้แสดงหน่วยสวยงาม */
-    .graph-block h4 { margin-bottom: 12px; font-size: 0.95rem; font-weight: 600; color: #e2e8f0; display: flex; justify-content: space-between; align-items: center; }
-    .graph-unit { font-size: 0.75rem; font-weight: 400; color: var(--text-muted); background: rgba(255,255,255,0.05); padding: 2px 8px; border-radius: 4px; }
-    
-    .chart-container { width: 100%; height: 200px; } 
+    // ส่ง Username และ Password เพื่อยืนยันตัวตนกับเซิร์ฟเวอร์
+    if (mqtt.connect(clientId.c_str(), MQTT_USER, MQTT_PASS)) {
+      Serial.println(" Connected!");
+    } else {
+      Serial.print(" failed, rc=");
+      Serial.println(mqtt.state());
+    }
+  }
+}
 
-    /* 🟢 ปรับแต่ง uPlot */
-    .u-legend { color: #f8fafc; font-size: 12px; padding-bottom: 8px; text-align: center; }
-    .u-legend .u-series th { font-weight: 600; }
-    .u-legend .u-value { color: #e2e8f0; }
-  </style>
-</head>
-<body>
+void sendBatchToGoogle() {
+  bool hasAnyData = false;
+  for (int i = 0; i < NODE_COUNT; i++) {
+    if (nodes[i].window.hasData && nodes[i].window.count > 0) hasAnyData = true;
+  }
+  if (!hasAnyData || WiFi.status() != WL_CONNECTED) return;
 
-  <div class="header-container">
-    <h2>⚡ 3-Axis XYZ Vibration Dashboard</h2>
-    <div class="server-badge">
-      <svg width="16" height="16" fill="currentColor" viewBox="0 0 16 16"><path d="M8 15A7 7 0 1 1 8 1a7 7 0 0 1 0 14zm0 1A8 8 0 1 0 8 0a8 8 0 0 0 0 16z"/><path d="M10.97 4.97a.235.235 0 0 0-.02.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-1.071-1.05z"/></svg>
-      Server: HiveMQ
-    </div>
-  </div>
+  int currentRSSI = WiFi.RSSI(); 
 
-  <div style="text-align: center; margin-bottom: 10px;">
-    <div id="conn-status" class="status">Connecting to MQTT Broker...</div>
-  </div>
-  
-  <div id="dashboard">
-    <div style="text-align: center; color: var(--text-muted); padding: 40px;">
-      ⏳ Waiting for 3-Axis sensor data...
-    </div>
-  </div>
+  String payload = "[";
+  int addedCount = 0;
+  for (int i = 0; i < NODE_COUNT; i++) {
+    if (nodes[i].window.hasData && nodes[i].window.count > 0) {
+      if (addedCount > 0) payload += ",";
+      FeatureAccumulator& win = nodes[i].window;
+      float avgRmsVel = win.sumRmsVel / win.count;
+      float avgTemp = win.sumTemp / win.count;
 
-  <script>
-    const RES = 1000 / 512; 
-    let activeNodes = {}; 
-    let charts = {}; 
-    let isDashboardDirty = false;
+      payload += "{";
+      payload += "\"id\":\"" + nodes[i].deviceId + "\",";
+      payload += "\"peak\":" + String(win.maxPeakAcc, 3) + ",";
+      payload += "\"rms\":" + String(avgRmsVel, 3) + ","; 
+      payload += "\"freq\":" + String(win.maxDomFreq, 1) + ","; 
+      payload += "\"temp\":" + String(avgTemp, 2) + ",";
+      payload += "\"rssi\":" + String(currentRSSI); 
+      payload += "}";
+      addedCount++;
+    }
+  }
+  payload += "]";
 
-    const waveX = Array.from({length: 128}, (_, i) => i);
-    const fftX = Array.from({length: 128}, (_, i) => (i + 4) * RES);
-    const emptyArr = Array.from({length: 128}, () => 0); 
+  WiFiClientSecure client; 
+  client.setInsecure(); // ยอมรับการเชื่อมต่อ HTTPS โดยไม่ตรวจใบรับรอง
+  HTTPClient https;
+  https.setFollowRedirects(HTTPC_DISABLE_FOLLOW_REDIRECTS);
+  https.setTimeout(20000);
 
-    // ยังคงเก็บหน่วยไว้แสดงใน Legend ด้านล่างเมื่อเอาเมาส์ชี้
-    const legendValue = (u, v) => v == null ? "--" : v.toFixed(2) + " mm/s";
+  Serial.println("\n[HTTP] Sending 1-MIN BATCH to Google Sheets...");
+  if (https.begin(client, GAS_URL)) {
+    https.addHeader("Content-Type", "application/json");
+    int httpCode = https.POST(payload);
+    Serial.printf("[HTTP] POST Result Code: %d\n", httpCode);
+    https.end();
+  }
 
-    function getWaveOptions(width) {
-      return {
-        width: width, height: 200,
-        scales: {
-          x: { time: false },
-          y: {
-            range: (u, dataMin, dataMax) => {
-              let min = dataMin < -10.0 ? dataMin * 1.2 : -10.0;
-              let max = dataMax > 10.0 ? dataMax * 1.2 : 10.0;
-              return [min, max];
-            }
-          }
-        },
-        axes: [ 
-          { show: false }, 
-          { 
-            stroke: "#94a3b8", 
-            grid: { stroke: "#1e293b", width: 1 },
-            // 🟢 นำคำว่า mm/s ออก เพื่อคืนพื้นที่ให้ตัวเลขกลับมาแสดงได้ปกติ
-            values: (u, vals) => vals.map(v => v.toFixed(1)) 
-          } 
-        ],
-        series: [
-          {}, 
-          { label: "X", stroke: "#f43f5e", width: 1.5, points: { show: false }, value: legendValue }, 
-          { label: "Y", stroke: "#10b981", width: 1.5, points: { show: false }, value: legendValue }, 
-          { label: "Z", stroke: "#3b82f6", width: 1.5, points: { show: false }, value: legendValue }  
-        ],
-        cursor: { show: false }
-      };
+  // เคลียร์ค่าที่สะสมไว้หลังส่งเสร็จ
+  for (int i = 0; i < NODE_COUNT; i++) nodes[i].window.clear();
+}
+
+void parseAndPublishLive(char* row) {
+  // ค้นหาตำแหน่งของ Pipe (|) เพื่อแยกว่าเป็น 1 แกน หรือ 3 แกน
+  char* p1 = strchr(row, '|'); if (!p1) return;
+  char* p2 = strchr(p1 + 1, '|'); if (!p2) return;
+  char* p3 = strchr(p2 + 1, '|');
+  char* p4 = p3 ? strchr(p3 + 1, '|') : NULL;
+  char* p5 = p4 ? strchr(p4 + 1, '|') : NULL;
+  char* p6 = p5 ? strchr(p5 + 1, '|') : NULL;
+
+  char* statsStr = row; 
+  char *waveX="", *waveY="", *waveZ="", *fftX="", *fftY="", *fftZ="";
+
+  if (p1 && p2 && p3 && p4 && p5 && p6) {
+    // 🟢 โหมด 3 แกน (XYZ)
+    *p1 = '\0'; *p2 = '\0'; *p3 = '\0'; *p4 = '\0'; *p5 = '\0'; *p6 = '\0';
+    waveX = p1 + 1; waveY = p2 + 1; waveZ = p3 + 1;
+    fftX = p4 + 1;  fftY = p5 + 1;  fftZ = p6 + 1;
+  } else if (p1 && p2) {
+    // 🟡 โหมด 1 แกน (รูปแบบเดิม)
+    *p1 = '\0'; *p2 = '\0';
+    waveX = p1 + 1; 
+    fftX = p2 + 1;
+  } else {
+    return; // ข้อมูลไม่สมบูรณ์
+  }
+
+  // หั่นข้อมูลส่วนสถิติ (ID, Peak, RMS, ...)
+  char* saveptr;
+  char* idToken = strtok_r(statsStr, ",", &saveptr);
+  char* seqToken = strtok_r(NULL, ",", &saveptr);
+  char* peakToken = strtok_r(NULL, ",", &saveptr);
+  char* rmsToken = strtok_r(NULL, ",", &saveptr);
+  char* freqToken = strtok_r(NULL, ",", &saveptr);
+  char* tempToken = strtok_r(NULL, ",", &saveptr);
+
+  if (idToken && peakToken && rmsToken && freqToken && tempToken) {
+    float peak = atof(peakToken);
+    float rms = atof(rmsToken);
+    float freq = atof(freqToken);
+    float temp = atof(tempToken);
+
+    // เก็บสะสมค่าสถิติเตรียมส่งไป Google Sheet
+    for (int i = 0; i < NODE_COUNT; i++) {
+      if (nodes[i].deviceId == String(idToken)) {
+        nodes[i].window.hasData = true;
+        nodes[i].window.count++;
+        nodes[i].window.sumRmsVel += rms;
+        nodes[i].window.sumTemp += temp;
+        if (peak > nodes[i].window.maxPeakAcc) nodes[i].window.maxPeakAcc = peak;
+        if (freq > nodes[i].window.maxDomFreq) nodes[i].window.maxDomFreq = freq;
+        break;
+      }
     }
 
-    function getFftOptions(width) {
-      return {
-        width: width, height: 200,
-        scales: {
-          x: { time: false },
-          y: {
-            range: (u, dataMin, dataMax) => {
-              let max = dataMax > 10.0 ? dataMax * 1.2 : 10.0;
-              return [0, max];
-            }
-          }
-        },
-        axes: [
-          { stroke: "#94a3b8", grid: { show: false }, values: (u, vals) => vals.map(v => v.toFixed(0) + "Hz") },
-          { 
-            stroke: "#94a3b8", 
-            grid: { stroke: "#1e293b", width: 1 },
-            // 🟢 นำคำว่า mm/s ออก เพื่อคืนพื้นที่ให้ตัวเลข
-            values: (u, vals) => vals.map(v => v.toFixed(1)) 
-          }
-        ],
-        series: [
-          {}, 
-          { label: "X", stroke: "#f43f5e", width: 1.5, points: { show: false }, value: legendValue }, 
-          { label: "Y", stroke: "#10b981", width: 1.5, points: { show: false }, value: legendValue }, 
-          { label: "Z", stroke: "#3b82f6", width: 1.5, points: { show: false }, value: legendValue }
-        ],
-        cursor: { show: false }
-      };
-    }
-
-    function updateDashboardOptimized() {
-      let container = document.getElementById('dashboard');
-      if (container.innerHTML.includes("Waiting")) container.innerHTML = ''; 
+    // แพ็กข้อมูล JSON ยิงขึ้นหน้าเว็บผ่าน MQTT
+    if (mqtt.connected()) {
+      static char mqttPayload[8192]; 
       
-      Object.keys(activeNodes).forEach((id) => {
-        let n = activeNodes[id];
-        let cardId = `node-card-${id}`;
-        let cardEl = document.getElementById(cardId);
-        
-        if (!cardEl) {
-          // 🟢 ย้ายคำว่า (mm/s) มาไว้ที่หัวกราฟแทน 
-          let html = `
-          <div class="node-container" id="${cardId}">
-            <div class="node-title">🏭 Node: ${n.id}</div>
-            <div class="node-stats">
-              <div class="stat-card">
-                <div class="stat-label">Max RMS</div>
-                <div class="stat-value" id="val-rms-${id}">--</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Max Peak</div>
-                <div class="stat-value" style="color:#60a5fa" id="val-peak-${id}">--</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Dom Freq</div>
-                <div class="stat-value" style="color:#f59e0b" id="val-freq-${id}">--</div>
-              </div>
-              <div class="stat-card">
-                <div class="stat-label">Temperature</div>
-                <div class="stat-value" style="color:#10b981" id="val-temp-${id}">--</div>
-              </div>
-            </div>
+      if (p6) { 
+        // สร้าง JSON แบบ 3 แกน
+        snprintf(mqttPayload, sizeof(mqttPayload),
+                 "{\"id\":\"%s\",\"peak\":%.2f,\"rms\":%.2f,\"freq\":%.1f,\"temp\":%.1f,\"waveX\":[%s],\"waveY\":[%s],\"waveZ\":[%s],\"fftX\":[%s],\"fftY\":[%s],\"fftZ\":[%s]}",
+                 idToken, peak, rms, freq, temp, waveX, waveY, waveZ, fftX, fftY, fftZ);
+      } else {
+        // สร้าง JSON แบบ 1 แกน
+        snprintf(mqttPayload, sizeof(mqttPayload),
+                 "{\"id\":\"%s\",\"peak\":%.2f,\"rms\":%.2f,\"freq\":%.1f,\"temp\":%.1f,\"waveX\":[%s],\"fftX\":[%s]}",
+                 idToken, peak, rms, freq, temp, waveX, fftX);
+      }
 
-            <div class="graph-grid">
-              <div class="graph-block">
-                <h4>
-                  <span>🟢 Time Waveform (X, Y, Z)</span>
-                  <span class="graph-unit">[ mm/s ]</span>
-                </h4>
-                <div class="chart-container" id="chart-wave-${id}"></div>
-              </div>
-              <div class="graph-block">
-                <h4>
-                  <span>🔵 FFT Spectrum (X, Y, Z)</span>
-                  <span class="graph-unit">[ mm/s ]</span>
-                </h4>
-                <div class="chart-container" id="chart-fft-${id}"></div>
-              </div>
-            </div>
-          </div>`;
-          container.insertAdjacentHTML('beforeend', html);
-
-          let waveContainer = document.getElementById(`chart-wave-${id}`);
-          let fftContainer = document.getElementById(`chart-fft-${id}`);
-          
-          charts[id] = {
-            wave: new uPlot(getWaveOptions(waveContainer.clientWidth), [waveX, emptyArr, emptyArr, emptyArr], waveContainer),
-            fft: new uPlot(getFftOptions(fftContainer.clientWidth), [fftX, emptyArr, emptyArr, emptyArr], fftContainer)
-          };
-        }
-
-        document.getElementById(`val-rms-${id}`).innerHTML = `${(n.rms || 0).toFixed(2)} <span style="font-size:0.75rem; color:#64748b;">mm/s</span>`;
-        document.getElementById(`val-peak-${id}`).innerHTML = `${(n.peak || 0).toFixed(2)} <span style="font-size:0.75rem; color:#64748b;">G</span>`;
-        document.getElementById(`val-freq-${id}`).innerHTML = `${(n.freq || 0).toFixed(1)} <span style="font-size:0.75rem; color:#64748b;">Hz</span>`;
-        document.getElementById(`val-temp-${id}`).innerHTML = `${(n.temp || 0).toFixed(1)} <span style="font-size:0.75rem; color:#64748b;">°C</span>`;
-
-        if (charts[id]) {
-          let wx = n.waveX || n.wave || emptyArr;
-          let wy = n.waveY || emptyArr;
-          let wz = n.waveZ || emptyArr;
-          
-          let fx = n.fftX || n.fft || emptyArr;
-          let fy = n.fftY || emptyArr;
-          let fz = n.fftZ || emptyArr;
-
-          charts[id].wave.setData([waveX, wx, wy, wz]);
-          charts[id].fft.setData([fftX, fx, fy, fz]);
-        }
-      });
+      digitalWrite(SEND_LED_PIN, HIGH);
+      mqtt.publish(MQTT_TOPIC_LIVE, mqttPayload);
+      digitalWrite(SEND_LED_PIN, LOW);
     }
+  }
+}
 
-    window.addEventListener("resize", () => {
-      Object.keys(charts).forEach((id) => {
-        let w = document.getElementById(`chart-wave-${id}`);
-        let f = document.getElementById(`chart-fft-${id}`);
-        if (w && f && w.clientWidth > 0) {
-          charts[id].wave.setSize({ width: w.clientWidth, height: 200 });
-          charts[id].fft.setSize({ width: f.clientWidth, height: 200 });
-        }
-      });
-    });
+// =====================================================
+// 🚀 SETUP & LOOP
+// =====================================================
 
-    setInterval(() => { if (isDashboardDirty) { updateDashboardOptimized(); isDashboardDirty = false; } }, 200);
+void setup() {
+  Serial.begin(115200); 
+  esp_task_wdt_init(30, true); esp_task_wdt_add(NULL);
 
-    const MQTT_BROKER = 'wss://4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud:8884/mqtt';
-    const MQTT_TOPIC = 'factory/vibration/live';
-    const options = { username: 'vibmonitor', password: 'Mcl19508', clientId: 'WebDash_' + Math.random().toString(16).substr(2, 8) };
+  pinMode(WIFI_LED_PIN, OUTPUT); digitalWrite(WIFI_LED_PIN, LOW);
+  pinMode(SEND_LED_PIN, OUTPUT); digitalWrite(SEND_LED_PIN, LOW);
+  pinMode(RX_LED_PIN, OUTPUT);   digitalWrite(RX_LED_PIN, LOW);
+  pinMode(RELAY_PIN, OUTPUT);    digitalWrite(RELAY_PIN, HIGH); 
 
-    const client = mqtt.connect(MQTT_BROKER, options);
+  RS485Serial.begin(115200, SERIAL_8N1, RS485_RX, RS485_TX); 
+  
+  WiFi.mode(WIFI_STA);
+  WiFi.begin(WIFI_SSID, WIFI_PASS);
+  
+  while (WiFi.status() != WL_CONNECTED) { delay(500); feedWatchdog(); }
+  Serial.println("\n[WiFi] Connected!");
 
-    client.on('connect', function () {
-      let statusDiv = document.getElementById('conn-status');
-      statusDiv.innerHTML = "🟢 Connected - XYZ Multi-Axis Mode";
-      statusDiv.className = "status online";
-      client.subscribe(MQTT_TOPIC);
-    });
+  // ข้ามการตรวจสอบใบรับรอง SSL/TLS (สำคัญมากสำหรับ HiveMQ)
+  espClient.setInsecure(); 
 
-    client.on('message', function (topic, message) {
-      try {
-        let payload = JSON.parse(message.toString());
-        activeNodes[payload.id] = payload; 
-        isDashboardDirty = true; 
-      } catch (e) {}
-    });
+  mqtt.setServer(MQTT_SERVER, MQTT_PORT);
+  mqtt.setBufferSize(8192); // ขยาย Buffer เพื่อรองรับ 3 แกน
+  
+  lastBatchMs = millis();
+}
 
-    client.on('offline', function () {
-      let statusDiv = document.getElementById('conn-status');
-      statusDiv.innerHTML = "🔴 Offline - Broker Connection Lost";
-      statusDiv.className = "status offline";
-    });
-  </script>
-</body>
-</html>
+void loop() {
+  feedWatchdog(); yield();
+
+  if (WiFi.status() == WL_CONNECTED) digitalWrite(WIFI_LED_PIN, HIGH);
+  else digitalWrite(WIFI_LED_PIN, LOW);
+
+  if (!mqtt.connected()) reconnectMQTT();
+  mqtt.loop(); 
+
+  // Poll ข้อมูลผ่าน RS485 ทุกๆ 1.5 วินาที
+  if (millis() - lastPollMs >= 1500) { 
+    lastPollMs = millis();
+    digitalWrite(RS485_DE_RE, HIGH); delay(2);
+    RS485Serial.print("R," + String(nodes[pollIndex].modbusAddress) + "\n");
+    RS485Serial.flush(); delay(2); digitalWrite(RS485_DE_RE, LOW);
+    pollIndex = (pollIndex + 1) % NODE_COUNT;
+  }
+
+  if (RS485Serial.available()) digitalWrite(RX_LED_PIN, HIGH);
+  else digitalWrite(RX_LED_PIN, LOW);
+
+
+// รับข้อมูลแบบ C-String ไร้การจองแรมใหม่ (ป้องกันบอร์ดค้าง)
+  while (RS485Serial.available()) {
+    feedWatchdog();
+    char c = RS485Serial.read();
+    
+    if (c == '\n') {
+      lineBuffer[lineIndex] = '\0'; 
+      if (lineIndex > 50) {
+        
+        // 🟢 เพิ่มบรรทัดนี้ เพื่อแสดงค่าที่รับมาจาก Slave Node
+        // Serial.print("[RS485 RX] Data Length: ");
+        // Serial.println(lineIndex); // โชว์ขนาดความยาวของข้อความก่อน
+        // Serial.println(lineBuffer); // โชว์ข้อมูลดิบทั้งหมด
+        
+        parseAndPublishLive(lineBuffer); 
+      }
+      lineIndex = 0; 
+      
+    } else if (c >= 32 && c <= 126 && lineIndex < MAX_LINE_LENGTH - 1) {
+      lineBuffer[lineIndex++] = c; 
+    }
+  }
+  // ส่งข้อมูลเข้า Google Sheet ทุกๆ 60 วินาที
+  if (millis() - lastBatchMs >= 60000) {
+    sendBatchToGoogle();
+    lastBatchMs = millis();
+  }
+}
