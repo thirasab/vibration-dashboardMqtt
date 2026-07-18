@@ -8,22 +8,24 @@
   <script src="https://unpkg.com/uplot/dist/uPlot.iife.min.js"></script>
   <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
   <style>
+    /* ══════════════════════════════════════════════════
+       CSS VARIABLES & RESET
+    ══════════════════════════════════════════════════ */
     :root {
-      --bg-main:      #060d18;
-      --bg-card:      #0d1526;
-      --bg-graph:     #0a1120;
-      --bg-stat:      #0f1c30;
-      --border:       #1e3a5f;
-      --border-glow:  #2563eb44;
-      --text-main:    #f0f6ff;
-      --text-muted:   #4d6a8a;
-      --primary:      #3b82f6;
-      --success:      #10b981;
-      --warn:         #f59e0b;
-      --danger:       #ef4444;
-      --x-color:      #f43f5e;
-      --y-color:      #10b981;
-      --z-color:      #3b82f6;
+      --bg-main:    #060d18;
+      --bg-card:    #0d1526;
+      --bg-graph:   #0a1120;
+      --bg-stat:    #0f1c30;
+      --border:     #1e3a5f;
+      --text-main:  #f0f6ff;
+      --text-muted: #4d6a8a;
+      --primary:    #3b82f6;
+      --success:    #10b981;
+      --warn:       #f59e0b;
+      --danger:     #ef4444;
+      --x-color:    #f43f5e;
+      --y-color:    #10b981;
+      --z-color:    #3b82f6;
     }
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -38,41 +40,40 @@
       overflow-x: hidden;
     }
 
-    /* ══ TOP BAR ══════════════════════════════════════ */
+    /* ══ TOP BAR ══ */
     .top-bar {
       display: flex; flex-wrap: wrap;
       justify-content: space-between; align-items: center;
       gap: 8px;
-      padding: clamp(8px,2vw,16px) clamp(12px,3vw,28px);
-      background: rgba(13,21,38,0.92);
+      padding: 10px 16px;
+      background: rgba(13,21,38,0.95);
       backdrop-filter: blur(14px);
       border-bottom: 1px solid var(--border);
-      position: sticky; top: 0; z-index: 200;
+      position: sticky; top: 0; z-index: 300;
     }
-    .top-left  { display:flex; align-items:center; gap:12px; }
+    .top-left  { display:flex; align-items:center; gap:10px; }
     .top-right { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
 
     .logo-icon {
-      width:38px; height:38px; flex-shrink:0;
+      width:36px; height:36px; flex-shrink:0;
       background: linear-gradient(135deg,#1d4ed8,#7c3aed);
       border-radius:10px;
       display:flex; align-items:center; justify-content:center;
-      font-size:20px; box-shadow:0 0 18px #3b82f644;
+      font-size:18px; box-shadow:0 0 18px #3b82f644;
     }
     h1 {
-      font-size: clamp(0.9rem,2.5vw,1.3rem); font-weight:800;
+      font-size: clamp(0.85rem,2.2vw,1.15rem); font-weight:800;
       background: linear-gradient(90deg,#60a5fa,#a78bfa);
       -webkit-background-clip:text; -webkit-text-fill-color:transparent;
       background-clip:text;
     }
-    .subtitle { font-size:clamp(0.6rem,1.4vw,0.72rem); color:var(--text-muted); }
+    .subtitle { font-size:.65rem; color:var(--text-muted); margin-top:1px; }
 
     .badge {
       display:inline-flex; align-items:center; gap:6px;
-      padding:5px 12px; border-radius:20px;
-      font-size:clamp(0.62rem,1.4vw,0.76rem); font-weight:600;
-      white-space:nowrap; border:1px solid transparent;
-      transition:all .3s;
+      padding:4px 10px; border-radius:20px;
+      font-size:.72rem; font-weight:600;
+      white-space:nowrap; border:1px solid transparent; transition:all .3s;
     }
     .badge-blue   { background:rgba(37,99,235,.12); color:#60a5fa; border-color:rgba(59,130,246,.25); }
     .badge-online { color:var(--success); background:#10b98115; border-color:#10b98133; }
@@ -80,286 +81,450 @@
     .badge-warn   { color:var(--warn);    background:#f59e0b15; border-color:#f59e0b33; }
 
     .btn {
-      display:inline-flex; align-items:center; gap:6px;
-      padding:5px 14px; border-radius:8px; border:none; cursor:pointer;
-      font-size:0.75rem; font-weight:700; transition:all .2s;
+      display:inline-flex; align-items:center; gap:5px;
+      padding:5px 12px; border-radius:8px; border:none; cursor:pointer;
+      font-size:.72rem; font-weight:700; transition:all .2s;
     }
-    .btn-csv {
-      background:linear-gradient(135deg,#065f46,#047857);
-      color:#fff; box-shadow:0 2px 8px #10b98133;
-    }
-    .btn-csv:hover { transform:translateY(-1px); box-shadow:0 4px 14px #10b98144; }
-    .btn-alarm {
-      background:linear-gradient(135deg,#7f1d1d,#991b1b);
-      color:#fca5a5; box-shadow:0 2px 8px #ef444433;
-    }
-    .btn-alarm:hover { transform:translateY(-1px); }
+    .btn-csv   { background:linear-gradient(135deg,#065f46,#047857); color:#fff; }
+    .btn-alarm { background:linear-gradient(135deg,#7f1d1d,#991b1b); color:#fca5a5; }
+    .btn-csv:hover,.btn-alarm:hover { transform:translateY(-1px); filter:brightness(1.1); }
 
-    .dot { width:8px; height:8px; border-radius:50%; background:currentColor; flex-shrink:0; }
+    .dot { width:7px; height:7px; border-radius:50%; background:currentColor; flex-shrink:0; }
     .dot.pulse { animation:pulse-dot 1.4s ease-in-out infinite; }
     @keyframes pulse-dot {
       0%,100%{ opacity:1; transform:scale(1); }
-      50%    { opacity:.4; transform:scale(.65); }
+      50%    { opacity:.4; transform:scale(.6); }
     }
 
-    /* ══ ALARM BANNER ════════════════════════════════ */
+    /* ══ ALARM BANNER ══ */
     #alarm-banner {
       display:none;
       background:linear-gradient(90deg,#7f1d1d,#991b1b,#7f1d1d);
       background-size:200% 100%;
       animation:banner-slide 3s linear infinite;
       color:#fca5a5; font-weight:700;
-      padding:7px 20px; text-align:center;
-      font-size:clamp(0.7rem,1.5vw,0.82rem);
-      border-bottom:1px solid #ef444455;
-      letter-spacing:.5px;
+      padding:6px 20px; text-align:center;
+      font-size:.78rem; border-bottom:1px solid #ef444455;
     }
     @keyframes banner-slide {
       0%  { background-position:0% 0; }
       100%{ background-position:200% 0; }
     }
 
-    /* ══ MAIN ════════════════════════════════════════ */
-    .main-content {
-      padding: clamp(12px,2.5vw,22px) clamp(12px,3vw,28px);
+    /* ══ LAYOUT ══ */
+    .layout {
+      display: flex;
+      height: calc(100vh - 53px);
+      overflow: hidden;
     }
 
-    /* ══ DASHBOARD GRID ══════════════════════════════ */
-    #dashboard {
-      display:grid; grid-template-columns:1fr;
-      gap:clamp(12px,2vw,20px);
+    /* ══ LEFT PANEL — Node List ══ */
+    .node-list-panel {
+      width: 320px;
+      min-width: 260px;
+      max-width: 380px;
+      background: var(--bg-card);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      flex-shrink: 0;
     }
-    @media(min-width:1100px){ #dashboard{ grid-template-columns:1fr 1fr; } }
-    @media(min-width:1600px){ #dashboard{ grid-template-columns:1fr 1fr 1fr; } }
+    @media (max-width: 768px) {
+      .layout { flex-direction: column; height: auto; overflow: auto; }
+      .node-list-panel { width: 100%; max-width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 55vh; }
+      .right-panel { height: auto; }
+    }
 
-    /* ══ WAITING ══════════════════════════════════════ */
-    .waiting-state {
-      grid-column:1/-1;
-      display:flex; flex-direction:column;
-      align-items:center; justify-content:center;
-      gap:16px; padding:60px 20px; color:var(--text-muted);
+    .panel-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+      flex-shrink: 0;
     }
-    .spinner {
-      width:46px; height:46px;
-      border:3px solid var(--border); border-top-color:var(--primary);
-      border-radius:50%; animation:spin 1s linear infinite;
+    .panel-title { font-size:.78rem; font-weight:800; color:#94a3b8; text-transform:uppercase; letter-spacing:.06em; }
+    #node-count-badge {
+      background: var(--primary); color:#fff;
+      border-radius:12px; padding:1px 8px; font-size:.65rem; font-weight:700;
     }
-    @keyframes spin{ to{ transform:rotate(360deg); } }
 
-    /* ══ NODE CARD ════════════════════════════════════ */
-    .node-container {
-      background:var(--bg-card); border:1px solid var(--border);
-      border-radius:16px; padding:clamp(12px,2vw,20px);
-      box-shadow:0 4px 24px #00000040, inset 0 1px 0 #ffffff08;
-      animation:fadeIn .4s ease;
-      transition:border-color .4s, box-shadow .4s;
-      position:relative; overflow:hidden;
+    .node-list-scroll {
+      overflow-y: auto;
+      flex: 1;
+      padding: 8px;
     }
-    .node-container::before {
-      content:''; position:absolute; inset:0; pointer-events:none;
-      background:linear-gradient(135deg,#ffffff04 0%,transparent 50%);
-    }
-    .node-container.alarm {
-      border-color:#ef4444aa !important;
-      box-shadow:0 0 32px #ef444433, inset 0 0 60px #ef444408 !important;
-      animation:fadeIn .4s ease, alarm-pulse 2s ease-in-out infinite;
-    }
-    @keyframes alarm-pulse {
-      0%,100%{ box-shadow:0 0 20px #ef444422, inset 0 0 40px #ef444406; }
-      50%    { box-shadow:0 0 40px #ef444455, inset 0 0 80px #ef444412; }
-    }
-    @keyframes fadeIn{ from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:none;} }
+    .node-list-scroll::-webkit-scrollbar{ width:4px; }
+    .node-list-scroll::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
 
-    .node-header {
-      display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:clamp(10px,1.5vw,14px); flex-wrap:wrap; gap:8px;
+    /* ══ NODE ROW CARD (ตามภาพ) ══ */
+    .node-row {
+      background: var(--bg-stat);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 10px 12px;
+      margin-bottom: 8px;
+      cursor: pointer;
+      transition: all .2s;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      position: relative;
+      overflow: hidden;
     }
-    .node-title {
-      font-size:clamp(0.88rem,2vw,1.05rem); font-weight:700; color:#e2e8f0;
-      display:flex; align-items:center; gap:8px;
+    .node-row:hover { border-color: var(--primary); background: #0f1d35; transform: translateX(2px); }
+    .node-row.selected { border-color: var(--primary); background: #0f1d35; box-shadow: 0 0 0 1px #3b82f622; }
+    .node-row.alarm-row { border-color: #ef4444aa !important; animation: alarm-row-pulse 2s ease-in-out infinite; }
+    @keyframes alarm-row-pulse {
+      0%,100%{ box-shadow: 0 0 8px #ef444422; }
+      50%    { box-shadow: 0 0 18px #ef444455; }
     }
-    .node-icon {
-      width:28px; height:28px;
-      background:linear-gradient(135deg,#1d4ed8,#4f46e5);
-      border-radius:8px; display:flex; align-items:center;
-      justify-content:center; font-size:14px;
+
+    .node-row-left { flex: 1; min-width: 0; }
+    .node-row-id {
+      font-size: .82rem; font-weight: 800; color: #e2e8f0;
+      display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+    }
+    .node-status-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--success); flex-shrink: 0;
+      animation: pulse-dot 2s ease-in-out infinite;
+    }
+    .node-status-dot.alarm { background: var(--danger); }
+
+    .node-row-metrics {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 2px 8px; font-size: .68rem; color: var(--text-muted);
+    }
+    .node-metric-item { display: flex; align-items: center; gap: 3px; }
+    .node-metric-val  { color: var(--text-main); font-weight: 700; }
+    .alarm-pill {
+      display: none;
+      font-size: .58rem; font-weight: 800;
+      background: #ef444420; color: #fca5a5;
+      border: 1px solid #ef444455; border-radius: 6px;
+      padding: 1px 5px; margin-left: 4px;
+    }
+
+    /* ══ MINI SPARKLINE (clickable) ══ */
+    .mini-chart-wrap {
+      width: 90px; height: 48px;
+      flex-shrink: 0;
+      border-radius: 8px;
+      overflow: hidden;
+      background: var(--bg-graph);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      position: relative;
+      transition: all .2s;
+    }
+    .mini-chart-wrap:hover {
+      border-color: var(--primary);
+      box-shadow: 0 0 12px #3b82f633;
+    }
+    .mini-chart-wrap:hover::after {
+      content: '🔍';
+      position: absolute; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: rgba(10,17,32,.7);
+      font-size: 18px;
+      border-radius: 7px;
+    }
+    .mini-chart-wrap canvas { display: block !important; }
+
+    /* ══ RIGHT PANEL — Detail ══ */
+    .right-panel {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      background: var(--bg-main);
+    }
+
+    .detail-placeholder {
+      flex: 1;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 12px; color: var(--text-muted);
+    }
+    .detail-placeholder .ph-icon { font-size: 3rem; opacity: .4; }
+    .detail-placeholder .ph-text { font-size: .85rem; font-weight: 600; }
+
+    /* ══ NODE DETAIL VIEW ══ */
+    .node-detail {
+      display: none;
+      flex-direction: column;
+      height: 100%;
+      overflow-y: auto;
+      padding: 16px;
+    }
+    .node-detail.active { display: flex; }
+    .node-detail::-webkit-scrollbar{ width:4px; }
+    .node-detail::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+
+    .detail-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 14px; flex-wrap: wrap; gap: 8px;
+    }
+    .detail-node-name {
+      font-size: 1.1rem; font-weight: 800; color: #e2e8f0;
+      display: flex; align-items: center; gap: 8px;
     }
     .live-badge {
-      font-size:.66rem; font-weight:700;
-      padding:3px 9px; border-radius:12px;
+      font-size:.62rem; font-weight:700;
+      padding:2px 8px; border-radius:10px;
       background:rgba(16,185,129,.15); color:#10b981;
       border:1px solid rgba(16,185,129,.3);
       animation:pulse-dot 2s ease-in-out infinite;
     }
-    .alarm-tag {
-      display:none; font-size:.66rem; font-weight:700;
-      padding:3px 9px; border-radius:12px;
-      background:rgba(239,68,68,.2); color:#fca5a5;
-      border:1px solid rgba(239,68,68,.4);
-    }
 
-    /* ══ STAT CARDS ════════════════════════════════════ */
-    .node-stats {
-      display:grid; grid-template-columns:repeat(2,1fr);
-      gap:clamp(6px,1.2vw,10px); margin-bottom:clamp(10px,1.5vw,14px);
+    /* ══ STAT CARDS ══ */
+    .stat-row-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px; margin-bottom: 14px;
     }
-    @media(min-width:480px){ .node-stats{ grid-template-columns:repeat(4,1fr); } }
+    @media (max-width: 600px) { .stat-row-grid { grid-template-columns: repeat(2,1fr); } }
 
     .stat-card {
-      background:var(--bg-stat); padding:clamp(8px,1.5vw,12px) 8px;
-      border-radius:10px; border:1px solid var(--border);
-      text-align:center; transition:border-color .3s, transform .2s;
-      position:relative; overflow:hidden;
+      background: var(--bg-card);
+      padding: 12px 10px;
+      border-radius: 10px; border: 1px solid var(--border);
+      text-align: center; transition: border-color .3s;
     }
-    .stat-card:hover{ border-color:var(--border-glow); transform:translateY(-1px); }
-    .stat-icon  { font-size:.95rem; margin-bottom:2px; }
-    .stat-label {
-      font-size:clamp(.56rem,1.1vw,.66rem); color:var(--text-muted);
-      font-weight:700; text-transform:uppercase; letter-spacing:.5px; margin-bottom:3px;
-    }
-    .stat-row { display:flex; align-items:baseline; justify-content:center; gap:4px; }
-    .stat-value { font-size:clamp(.95rem,2.5vw,1.2rem); font-weight:800; line-height:1; }
-    .stat-trend { font-size:.8rem; }
-    .stat-unit  { font-size:.58rem; color:var(--text-muted); font-weight:500; margin-top:2px; }
+    .stat-card:hover { border-color: #2563eb55; }
+    .stat-icon   { font-size:.9rem; margin-bottom:2px; }
+    .stat-label  { font-size:.6rem; color:var(--text-muted); font-weight:700; text-transform:uppercase; letter-spacing:.4px; margin-bottom:3px; }
+    .stat-value  { font-size:1.15rem; font-weight:800; line-height:1; }
+    .stat-trend  { font-size:.75rem; }
+    .stat-unit   { font-size:.56rem; color:var(--text-muted); font-weight:500; margin-top:2px; }
 
-    /* ══ GRAPH GRID ════════════════════════════════════ */
-    .graph-grid {
-      display:grid; grid-template-columns:1fr;
-      gap:clamp(8px,1.5vw,12px);
+    /* ══ DETAIL CHARTS ══ */
+    .detail-charts-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px; margin-bottom: 14px;
     }
-    @media(min-width:560px){ .graph-grid{ grid-template-columns:1fr 1fr; } }
+    @media (max-width: 700px) { .detail-charts-grid { grid-template-columns: 1fr; } }
 
-    .graph-block {
-      background:var(--bg-graph); padding:clamp(8px,1.5vw,12px);
-      border-radius:10px; border:1px solid var(--border);
-      transition:border-color .3s; min-width:0;
+    .detail-chart-block {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 12px;
     }
-    .graph-block:hover{ border-color:#2563eb55; }
-    .graph-header {
-      display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:8px; flex-wrap:wrap; gap:4px;
+    .detail-chart-header {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 8px; flex-wrap: wrap; gap: 4px;
     }
-    .graph-title {
-      font-size:clamp(.68rem,1.5vw,.8rem); font-weight:700; color:#cbd5e1;
-      display:flex; align-items:center; gap:6px;
+    .detail-chart-title {
+      font-size: .75rem; font-weight: 700; color: #cbd5e1;
+      display: flex; align-items: center; gap: 6px;
     }
-    .graph-unit {
-      font-size:.63rem; color:var(--text-muted);
-      background:rgba(255,255,255,.05);
-      padding:2px 7px; border-radius:6px;
-      font-weight:600; border:1px solid var(--border);
+    .chart-unit-badge {
+      font-size: .6rem; color: var(--text-muted);
+      background: rgba(255,255,255,.05);
+      padding: 2px 6px; border-radius: 5px;
+      border: 1px solid var(--border); font-weight: 600;
     }
-    .chart-wrap { display:block; width:100%; min-width:0; position:relative; }
-    .chart-wrap > .u-wrap { width:100% !important; min-width:0 !important; }
-    .chart-wrap canvas { border-radius:6px; display:block; }
-
-    .axis-legend { display:flex; gap:12px; justify-content:center; margin-top:6px; }
+    .chart-container { width: 100%; position: relative; min-width: 0; }
+    .chart-container canvas { border-radius: 6px; }
+    .axis-legend { display:flex; gap:10px; justify-content:center; margin-top:6px; }
     .axis-legend span {
-      font-size:.63rem; font-weight:700;
-      display:flex; align-items:center; gap:4px; color:var(--text-muted);
+      font-size:.6rem; font-weight:700;
+      display:flex; align-items:center; gap:3px; color:var(--text-muted);
     }
     .axis-legend span::before {
-      content:''; display:block; width:18px; height:2.5px; border-radius:2px;
+      content:''; display:block; width:16px; height:2px; border-radius:1px;
     }
     .leg-x::before{ background:var(--x-color); }
     .leg-y::before{ background:var(--y-color); }
     .leg-z::before{ background:var(--z-color); }
 
-    /* ══ THRESHOLD SETTINGS MODAL ═══════════════════════ */
+    /* ══ FULLSCREEN CHART MODAL ══ */
+    .chart-modal-overlay {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.85);
+      backdrop-filter: blur(8px);
+      z-index: 1000;
+      align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .chart-modal-overlay.open { display: flex; }
+
+    .chart-modal {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      width: min(1000px, 95vw);
+      max-height: 90vh;
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      box-shadow: 0 20px 60px #00000080;
+      animation: modal-in .25s ease;
+    }
+    @keyframes modal-in {
+      from { opacity:0; transform:scale(.94) translateY(20px); }
+      to   { opacity:1; transform:none; }
+    }
+
+    .chart-modal-header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chart-modal-title {
+      font-size: .92rem; font-weight: 800; color: #e2e8f0;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .modal-close-btn {
+      width: 30px; height: 30px;
+      background: var(--bg-stat); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text-muted);
+      cursor: pointer; font-size: .9rem;
+      display: flex; align-items: center; justify-content: center;
+      transition: all .2s;
+    }
+    .modal-close-btn:hover { background: #ef444420; color: #fca5a5; border-color: #ef444455; }
+
+    /* Modal Tabs (Wave / FFT) */
+    .modal-tabs {
+      display: flex; gap: 2px;
+      padding: 10px 20px 0;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .modal-tab-btn {
+      background: none; border: none;
+      color: var(--text-muted);
+      padding: 7px 16px;
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      font-size: .8rem; font-weight: 700;
+      transition: all .2s;
+    }
+    .modal-tab-btn:hover  { color: var(--text-main); }
+    .modal-tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px 20px 20px;
+    }
+    .modal-body::-webkit-scrollbar{ width:4px; }
+    .modal-body::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
+
+    /* Modal chart container */
+    .modal-chart-wrap { width: 100%; position: relative; min-width: 0; }
+    .modal-chart-wrap canvas { border-radius: 8px; }
+
+    /* Axis toggle in modal */
+    .modal-axis-ctrl {
+      display: flex; gap: 6px; align-items: center;
+      margin-bottom: 10px; flex-wrap: wrap;
+    }
+    .modal-axis-ctrl label { font-size:.72rem; color:var(--text-muted); font-weight:700; margin-right:4px; }
+    .axis-toggle {
+      padding: 3px 10px; border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg-stat); color: var(--text-muted);
+      cursor: pointer; font-size: .72rem; font-weight: 700;
+      transition: all .15s;
+    }
+    .axis-toggle.on-x { background: #f43f5e22; color: var(--x-color); border-color: #f43f5e55; }
+    .axis-toggle.on-y { background: #10b98122; color: var(--y-color); border-color: #10b98155; }
+    .axis-toggle.on-z { background: #3b82f622; color: var(--z-color); border-color: #3b82f655; }
+
+    /* Modal info strip */
+    .modal-info-strip {
+      display: flex; gap: 16px; flex-wrap: wrap;
+      margin-bottom: 12px;
+      padding: 10px 14px;
+      background: var(--bg-stat);
+      border-radius: 8px; border: 1px solid var(--border);
+    }
+    .modal-info-item { font-size: .72rem; color: var(--text-muted); }
+    .modal-info-item strong { color: var(--text-main); font-size: .82rem; }
+
+    /* ══ THRESHOLD MODAL ══ */
     .modal-overlay {
       display:none; position:fixed; inset:0;
       background:rgba(0,0,0,.7); backdrop-filter:blur(4px);
       z-index:500; align-items:center; justify-content:center;
     }
     .modal-overlay.open { display:flex; }
-    .modal {
+    .modal-box {
       background:var(--bg-card); border:1px solid var(--border);
-      border-radius:16px; padding:24px; width:min(420px,90vw);
+      border-radius:16px; padding:24px; width:min(400px,90vw);
       box-shadow:0 8px 40px #00000060;
     }
-    .modal h3 { font-size:1rem; font-weight:800; margin-bottom:16px; color:#e2e8f0; }
-    .modal-grid { display:grid; gap:12px; }
+    .modal-box h3 { font-size:.95rem; font-weight:800; margin-bottom:16px; color:#e2e8f0; }
     .field-group label {
-      display:block; font-size:.7rem; color:var(--text-muted);
+      display:block; font-size:.68rem; color:var(--text-muted);
       font-weight:700; text-transform:uppercase; margin-bottom:4px;
     }
     .field-group input {
-      width:100%; padding:8px 12px; border-radius:8px;
+      width:100%; padding:7px 11px; border-radius:7px;
       background:var(--bg-stat); border:1px solid var(--border);
-      color:var(--text-main); font-size:.85rem; outline:none;
-      transition:border-color .2s;
+      color:var(--text-main); font-size:.82rem; outline:none; transition:border-color .2s;
     }
     .field-group input:focus { border-color:var(--primary); }
-    .modal-actions { display:flex; gap:8px; margin-top:16px; }
-    .btn-save {
-      flex:1; background:linear-gradient(135deg,#1d4ed8,#4f46e5);
-      color:#fff; padding:9px; border-radius:8px; border:none;
-      cursor:pointer; font-weight:700; font-size:.82rem;
-      transition:opacity .2s;
-    }
-    .btn-save:hover{ opacity:.9; }
-    .btn-cancel {
-      padding:9px 18px; border-radius:8px;
-      background:var(--bg-stat); color:var(--text-muted);
-      border:1px solid var(--border); cursor:pointer; font-size:.82rem;
-    }
+    .modal-grid { display:grid; gap:10px; margin-bottom:16px; }
+    .modal-actions { display:flex; gap:8px; }
+    .btn-save   { flex:1; background:linear-gradient(135deg,#1d4ed8,#4f46e5); color:#fff; padding:9px; border-radius:8px; border:none; cursor:pointer; font-weight:700; font-size:.8rem; }
+    .btn-cancel { padding:9px 16px; border-radius:8px; background:var(--bg-stat); color:var(--text-muted); border:1px solid var(--border); cursor:pointer; font-size:.8rem; }
 
-    /* ══ LOG PANEL ════════════════════════════════════ */
+    /* ══ LOG PANEL ══ */
     #log-panel {
-      margin-top: clamp(12px,2vw,20px);
-      background:var(--bg-card); border:1px solid var(--border);
-      border-radius:12px; padding:14px;
+      background:var(--bg-card); border-top:1px solid var(--border);
+      border-radius:0; padding:12px 16px; flex-shrink: 0;
     }
-    .log-header {
-      display:flex; justify-content:space-between; align-items:center;
-      margin-bottom:10px; flex-wrap:wrap; gap:8px;
-    }
-    .log-title { font-size:.82rem; font-weight:700; color:#94a3b8; }
-    .log-count { font-size:.68rem; color:var(--text-muted); }
-    #log-table-wrap { overflow-x:auto; max-height:180px; overflow-y:auto; }
-    #log-table-wrap::-webkit-scrollbar{ height:4px; width:4px; }
+    .log-header { display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; }
+    .log-title  { font-size:.75rem; font-weight:700; color:#94a3b8; }
+    .log-count  { font-size:.65rem; color:var(--text-muted); }
+    #log-table-wrap { overflow-x:auto; max-height:120px; overflow-y:auto; }
+    #log-table-wrap::-webkit-scrollbar{ height:3px; width:3px; }
     #log-table-wrap::-webkit-scrollbar-thumb{ background:var(--border); border-radius:2px; }
-    table { width:100%; border-collapse:collapse; font-size:.7rem; }
-    th {
-      background:var(--bg-stat); color:var(--text-muted);
-      padding:6px 10px; text-align:left; font-weight:700;
-      text-transform:uppercase; letter-spacing:.4px;
-      position:sticky; top:0;
-    }
-    td { padding:5px 10px; border-bottom:1px solid #1e293b55; color:#cbd5e1; }
+    table { width:100%; border-collapse:collapse; font-size:.68rem; }
+    th { background:var(--bg-stat); color:var(--text-muted); padding:5px 8px; text-align:left; font-weight:700; text-transform:uppercase; letter-spacing:.4px; position:sticky; top:0; }
+    td { padding:4px 8px; border-bottom:1px solid #1e293b44; color:#cbd5e1; }
     tr:last-child td { border-bottom:none; }
-    tr:hover td { background:#ffffff05; }
+    tr:hover td { background:#ffffff04; }
 
-    /* ══ FOOTER ═══════════════════════════════════════ */
-    .footer {
-      text-align:center; padding:14px;
-      font-size:.66rem; color:var(--text-muted);
-      border-top:1px solid var(--border); margin-top:8px;
+    /* ══ WAITING STATE ══ */
+    .waiting-state {
+      display:flex; flex-direction:column;
+      align-items:center; justify-content:center;
+      gap:12px; padding:40px 20px; color:var(--text-muted);
+      width: 100%;
     }
+    .spinner { width:40px; height:40px; border:3px solid var(--border); border-top-color:var(--primary); border-radius:50%; animation:spin 1s linear infinite; }
+    @keyframes spin{ to{ transform:rotate(360deg); } }
 
-    /* ══ uPlot override ═══════════════════════════════ */
-    .u-legend { display:none; }
+    /* ══ uPlot override ══ */
+    .u-legend { display:none !important; }
 
-    /* ══ SCROLLBAR ════════════════════════════════════ */
-    ::-webkit-scrollbar{ width:5px; }
+    /* ══ SCROLLBAR ══ */
+    ::-webkit-scrollbar{ width:4px; }
     ::-webkit-scrollbar-track{ background:var(--bg-main); }
     ::-webkit-scrollbar-thumb{ background:var(--border); border-radius:3px; }
   </style>
 </head>
 <body>
 
-<!-- ══ TOP BAR ══════════════════════════════════════ -->
+<!-- ══ TOP BAR ══ -->
 <header class="top-bar">
   <div class="top-left">
     <div class="logo-icon">⚡</div>
     <div>
       <h1>3-Axis XYZ Vibration Dashboard</h1>
-      <div class="subtitle">Real-time Multi-Node · Ring Buffer · FFT Worker · Alarm · CSV</div>
+      <div class="subtitle">Real-time · Ring Buffer · FFT Worker · Alarm · CSV</div>
     </div>
   </div>
   <div class="top-right">
     <div class="badge badge-blue">
-      <svg width="11" height="11" fill="currentColor" viewBox="0 0 16 16">
+      <svg width="10" height="10" fill="currentColor" viewBox="0 0 16 16">
         <path d="M1 2a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V2zm0 5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1V7zm0 5a1 1 0 0 1 1-1h11a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H2a1 1 0 0 1-1-1v-2z"/>
       </svg>
       HiveMQ
@@ -368,54 +533,202 @@
       <span class="dot pulse"></span> Connecting...
     </div>
     <button class="btn btn-alarm" onclick="openThresholdModal()">⚙️ Thresholds</button>
-    <button class="btn btn-csv"   onclick="exportCSV()">📥 Export CSV</button>
+    <button class="btn btn-csv"   onclick="exportCSV()">📥 CSV</button>
   </div>
 </header>
 
-<!-- ══ ALARM BANNER ══════════════════════════════════ -->
-<div id="alarm-banner">⚠️ ALARM DETECTED — Check nodes below</div>
+<!-- ══ ALARM BANNER ══ -->
+<div id="alarm-banner">⚠️ ALARM DETECTED — Check highlighted nodes</div>
 
-<!-- ══ DASHBOARD ═════════════════════════════════════ -->
-<main class="main-content">
-  <div id="dashboard">
-    <div class="waiting-state">
-      <div class="spinner"></div>
-      <div style="font-weight:600;font-size:.9rem;">Waiting for sensor data...</div>
-      <div style="font-size:.74rem;">Topic: <code style="color:#60a5fa;background:#1e3a5f33;padding:2px 6px;border-radius:4px;">factory/vibration/live</code></div>
+<!-- ══ MAIN LAYOUT ══ -->
+<div class="layout">
+
+  <!-- LEFT: Node List -->
+  <div class="node-list-panel">
+    <div class="panel-header">
+      <span class="panel-title">📡 Nodes</span>
+      <span id="node-count-badge">0</span>
+    </div>
+    <div class="node-list-scroll" id="node-list">
+      <div class="waiting-state" id="list-waiting">
+        <div class="spinner"></div>
+        <div style="font-size:.8rem;font-weight:600;">Waiting for nodes…</div>
+      </div>
     </div>
   </div>
 
-  <!-- LOG PANEL -->
-  <div id="log-panel">
-    <div class="log-header">
-      <span class="log-title">📋 Data Log</span>
-      <span class="log-count" id="log-count">0 records</span>
+  <!-- RIGHT: Detail + Log -->
+  <div class="right-panel">
+
+    <!-- Placeholder -->
+    <div class="detail-placeholder" id="detail-placeholder">
+      <div class="ph-icon">👆</div>
+      <div class="ph-text">เลือก Node จากรายการทางซ้าย</div>
+      <div style="font-size:.72rem;color:var(--text-muted);">หรือกดที่กราฟเล็กเพื่อดูกราฟขนาดใหญ่</div>
     </div>
-    <div id="log-table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Time</th><th>Node</th>
-            <th>RMS</th><th>Peak</th><th>Freq</th><th>Temp</th><th>Status</th>
-          </tr>
-        </thead>
-        <tbody id="log-tbody"></tbody>
-      </table>
+
+    <!-- Node Detail -->
+    <div class="node-detail" id="node-detail">
+
+      <div class="detail-header">
+        <div class="detail-node-name">
+          <span style="font-size:1.2rem">🏭</span>
+          <span id="detail-node-id">—</span>
+          <span class="live-badge">● LIVE</span>
+          <span class="alarm-pill" id="detail-alarm-pill">⚠️ ALARM</span>
+        </div>
+        <div style="font-size:.68rem;color:var(--text-muted)" id="detail-last-update">—</div>
+      </div>
+
+      <!-- Stat Cards -->
+      <div class="stat-row-grid">
+        <div class="stat-card">
+          <div class="stat-icon">📊</div>
+          <div class="stat-label">Max RMS</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;">
+            <span class="stat-value" style="color:#60a5fa" id="d-rms">--</span>
+            <span class="stat-trend" id="d-rms-t">●</span>
+          </div>
+          <div class="stat-unit">mm/s</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">📈</div>
+          <div class="stat-label">Max Peak</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;">
+            <span class="stat-value" style="color:#a78bfa" id="d-peak">--</span>
+            <span class="stat-trend" id="d-peak-t">●</span>
+          </div>
+          <div class="stat-unit">G</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🎵</div>
+          <div class="stat-label">Dom Freq</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;">
+            <span class="stat-value" style="color:#f59e0b" id="d-freq">--</span>
+            <span class="stat-trend" id="d-freq-t">●</span>
+          </div>
+          <div class="stat-unit">Hz</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-icon">🌡️</div>
+          <div class="stat-label">Temp</div>
+          <div style="display:flex;align-items:baseline;justify-content:center;gap:4px;">
+            <span class="stat-value" style="color:#10b981" id="d-temp">--</span>
+            <span class="stat-trend" id="d-temp-t">●</span>
+          </div>
+          <div class="stat-unit">°C</div>
+        </div>
+      </div>
+
+      <!-- Detail Charts (clickable → open modal) -->
+      <div class="detail-charts-grid">
+        <div class="detail-chart-block" style="cursor:pointer;" onclick="openChartModal(selectedNodeId,'wave')">
+          <div class="detail-chart-header">
+            <span class="detail-chart-title">
+              <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#10b981"/></svg>
+              🌊 Waveform <small style="color:#475569;font-weight:400;">(คลิกขยาย)</small>
+            </span>
+            <span class="chart-unit-badge">mm/s</span>
+          </div>
+          <div class="chart-container" id="detail-chart-wave"></div>
+          <div class="axis-legend">
+            <span class="leg-x">X</span>
+            <span class="leg-y">Y</span>
+            <span class="leg-z">Z</span>
+          </div>
+        </div>
+        <div class="detail-chart-block" style="cursor:pointer;" onclick="openChartModal(selectedNodeId,'fft')">
+          <div class="detail-chart-header">
+            <span class="detail-chart-title">
+              <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#3b82f6"/></svg>
+              📡 FFT Spectrum <small style="color:#475569;font-weight:400;">(คลิกขยาย)</small>
+            </span>
+            <span class="chart-unit-badge">mm/s</span>
+          </div>
+          <div class="chart-container" id="detail-chart-fft"></div>
+          <div class="axis-legend">
+            <span class="leg-x">X</span>
+            <span class="leg-y">Y</span>
+            <span class="leg-z">Z</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Log Panel -->
+      <div id="log-panel">
+        <div class="log-header">
+          <span class="log-title">📋 Data Log</span>
+          <span class="log-count" id="log-count">0 records</span>
+        </div>
+        <div id="log-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Time</th><th>Node</th>
+                <th>RMS</th><th>Peak</th><th>Freq</th><th>Temp</th><th>Status</th>
+              </tr>
+            </thead>
+            <tbody id="log-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+    </div><!-- /node-detail -->
+  </div><!-- /right-panel -->
+</div><!-- /layout -->
+
+<!-- ══ FULLSCREEN CHART MODAL ══ -->
+<div class="chart-modal-overlay" id="chart-modal-overlay">
+  <div class="chart-modal" id="chart-modal">
+
+    <div class="chart-modal-header">
+      <div class="chart-modal-title">
+        <span id="modal-chart-icon">🌊</span>
+        <span id="modal-chart-title">Waveform</span>
+        <span style="font-size:.72rem;color:var(--text-muted)" id="modal-node-name">—</span>
+      </div>
+      <button class="modal-close-btn" onclick="closeChartModal()">✕</button>
+    </div>
+
+    <!-- Tabs: Wave / FFT -->
+    <div class="modal-tabs">
+      <button class="modal-tab-btn active" id="mtab-wave" onclick="switchModalTab('wave')">🌊 Waveform</button>
+      <button class="modal-tab-btn"        id="mtab-fft"  onclick="switchModalTab('fft')">📡 FFT Spectrum</button>
+    </div>
+
+    <div class="modal-body">
+
+      <!-- Info Strip -->
+      <div class="modal-info-strip" id="modal-info-strip">
+        <div class="modal-info-item">RMS <strong id="mi-rms">--</strong> mm/s</div>
+        <div class="modal-info-item">Peak <strong id="mi-peak">--</strong> G</div>
+        <div class="modal-info-item">Freq <strong id="mi-freq">--</strong> Hz</div>
+        <div class="modal-info-item">Temp <strong id="mi-temp">--</strong> °C</div>
+      </div>
+
+      <!-- Axis toggles -->
+      <div class="modal-axis-ctrl">
+        <label>Axis:</label>
+        <button class="axis-toggle on-x" id="atog-x" onclick="toggleModalAxis('x')">● X</button>
+        <button class="axis-toggle on-y" id="atog-y" onclick="toggleModalAxis('y')">● Y</button>
+        <button class="axis-toggle on-z" id="atog-z" onclick="toggleModalAxis('z')">● Z</button>
+      </div>
+
+      <!-- Chart -->
+      <div class="modal-chart-wrap" id="modal-chart-wrap"></div>
+      <div class="axis-legend" style="margin-top:10px">
+        <span class="leg-x">X</span>
+        <span class="leg-y">Y</span>
+        <span class="leg-z">Z</span>
+      </div>
+
     </div>
   </div>
-</main>
+</div>
 
-<footer class="footer">
-  3-Axis XYZ Vibration Monitor &nbsp;·&nbsp;
-  <span style="color:#f43f5e;font-weight:700;">X</span>
-  <span style="color:#10b981;font-weight:700;">Y</span>
-  <span style="color:#3b82f6;font-weight:700;">Z</span>
-  &nbsp;·&nbsp; Ring Buffer · EMA · FFT Worker · Alarm · Trend · CSV Logger
-</footer>
-
-<!-- ══ THRESHOLD MODAL ═════════════════════════════ -->
+<!-- ══ THRESHOLD MODAL ══ -->
 <div class="modal-overlay" id="modal-overlay">
-  <div class="modal">
+  <div class="modal-box">
     <h3>⚙️ Alarm Thresholds</h3>
     <div class="modal-grid">
       <div class="field-group">
@@ -443,631 +756,676 @@
 </div>
 
 <!-- ══════════════════════════════════════════════════
-     JAVASCRIPT — ALL TECHNIQUES COMBINED
+     JAVASCRIPT
 ══════════════════════════════════════════════════ -->
 <script>
 'use strict';
 
-/* ════════════════════════════════════════════════════
-   1. CONSTANTS & CONFIG
-════════════════════════════════════════════════════ */
-const CHART_H   = 160;
-const BUF_SIZE  = 128;
-const FFT_SIZE  = 128;
-const RES       = 1000 / 512;
-const EMA_ALPHA = 0.28;           // smoothing factor (0=max smooth, 1=no smooth)
-const LOG_MAX   = 2000;           // max log rows in memory
+/* ════════════════════
+   1. CONSTANTS
+════════════════════ */
+const MINI_H   = 48;    // mini sparkline height (px)
+const DETAIL_H = 180;   // detail chart height (px)
+const MODAL_H  = 340;   // fullscreen modal chart height (px)
+const BUF_SIZE = 128;
+const FFT_SIZE = 128;
+const RES      = 1000 / 512;
+const EMA_A    = 0.28;
+const LOG_MAX  = 2000;
 
-const waveXArr  = Float32Array.from({ length: BUF_SIZE }, (_, i) => i);
-const fftXArr   = Float32Array.from({ length: FFT_SIZE  }, (_, i) => (i + 4) * RES);
-const waveX     = Array.from(waveXArr);
-const fftX      = Array.from(fftXArr);
-const emptyF    = () => new Array(BUF_SIZE).fill(0);
-const fmtV      = (u, v) => v == null ? '--' : v.toFixed(2) + ' mm/s';
+const waveXArr = Array.from({ length: BUF_SIZE }, (_, i) => i);
+const fftXArr  = Array.from({ length: FFT_SIZE  }, (_, i) => (i + 4) * RES);
+const emptyArr = () => new Array(BUF_SIZE).fill(0);
 
-/* ════════════════════════════════════════════════════
-   2. ALARM THRESHOLDS (mutable)
-════════════════════════════════════════════════════ */
-let THRESHOLDS = { rms: 7.5, peak: 15.0, freq: 200, temp: 80 };
+/* ════════════════════
+   2. THRESHOLDS
+════════════════════ */
+let THR = { rms: 7.5, peak: 15.0, freq: 200, temp: 80 };
 
 function openThresholdModal() {
-  document.getElementById('th-rms').value  = THRESHOLDS.rms;
-  document.getElementById('th-peak').value = THRESHOLDS.peak;
-  document.getElementById('th-freq').value = THRESHOLDS.freq;
-  document.getElementById('th-temp').value = THRESHOLDS.temp;
+  document.getElementById('th-rms').value  = THR.rms;
+  document.getElementById('th-peak').value = THR.peak;
+  document.getElementById('th-freq').value = THR.freq;
+  document.getElementById('th-temp').value = THR.temp;
   document.getElementById('modal-overlay').classList.add('open');
 }
-function closeThresholdModal() {
-  document.getElementById('modal-overlay').classList.remove('open');
-}
+function closeThresholdModal() { document.getElementById('modal-overlay').classList.remove('open'); }
 function saveThresholds() {
-  THRESHOLDS.rms  = parseFloat(document.getElementById('th-rms').value)  || 7.5;
-  THRESHOLDS.peak = parseFloat(document.getElementById('th-peak').value) || 15;
-  THRESHOLDS.freq = parseFloat(document.getElementById('th-freq').value) || 200;
-  THRESHOLDS.temp = parseFloat(document.getElementById('th-temp').value) || 80;
+  THR.rms  = parseFloat(document.getElementById('th-rms').value)  || 7.5;
+  THR.peak = parseFloat(document.getElementById('th-peak').value) || 15;
+  THR.freq = parseFloat(document.getElementById('th-freq').value) || 200;
+  THR.temp = parseFloat(document.getElementById('th-temp').value) || 80;
   closeThresholdModal();
 }
-// Close modal on overlay click
-document.getElementById('modal-overlay').addEventListener('click', (e) => {
+document.getElementById('modal-overlay').addEventListener('click', e => {
   if (e.target === e.currentTarget) closeThresholdModal();
 });
 
-/* ════════════════════════════════════════════════════
-   3. RING BUFFER — Float32Array based
-════════════════════════════════════════════════════ */
+/* ════════════════════
+   3. RING BUFFER
+════════════════════ */
 class RingBuffer {
-  constructor(size) {
-    this.size = size;
-    this.buf  = new Float32Array(size);
-    this.ptr  = 0;
-    this.full = false;
-  }
-  push(v) {
-    this.buf[this.ptr] = v;
-    this.ptr = (this.ptr + 1) % this.size;
-    if (this.ptr === 0) this.full = true;
-  }
-  pushArray(arr) { for (const v of arr) this.push(v); }
+  constructor(size) { this.size=size; this.buf=new Float32Array(size); this.ptr=0; this.full=false; }
+  push(v) { this.buf[this.ptr]=v; this.ptr=(this.ptr+1)%this.size; if(this.ptr===0)this.full=true; }
+  pushArray(arr) { for(const v of arr) this.push(v); }
   toArray() {
-    const out = new Array(this.size);
-    for (let i = 0; i < this.size; i++)
-      out[i] = this.buf[(this.ptr + i) % this.size];
+    const out=new Array(this.size);
+    for(let i=0;i<this.size;i++) out[i]=this.buf[(this.ptr+i)%this.size];
     return out;
   }
 }
 
-/* ════════════════════════════════════════════════════
-   4. EMA SMOOTHER — per-channel
-════════════════════════════════════════════════════ */
-class EmaSmoother {
-  constructor(size, alpha = EMA_ALPHA) {
-    this.alpha = alpha;
-    this.prev  = new Float32Array(size);
-    this.ready = false;
-  }
+/* ════════════════════
+   4. EMA SMOOTHER
+════════════════════ */
+class EMA {
+  constructor(size, a=EMA_A) { this.a=a; this.prev=new Float32Array(size); this.ready=false; }
   smooth(arr) {
-    const a = this.alpha, b = 1 - a;
-    const out = new Array(arr.length);
-    if (!this.ready) {
-      for (let i = 0; i < arr.length; i++) out[i] = this.prev[i] = arr[i];
-      this.ready = true;
-    } else {
-      for (let i = 0; i < arr.length; i++) {
-        this.prev[i] = a * arr[i] + b * this.prev[i];
-        out[i] = this.prev[i];
-      }
-    }
+    const a=this.a, b=1-a, out=new Array(arr.length);
+    if(!this.ready){ for(let i=0;i<arr.length;i++) out[i]=this.prev[i]=arr[i]; this.ready=true; }
+    else { for(let i=0;i<arr.length;i++){ this.prev[i]=a*arr[i]+b*this.prev[i]; out[i]=this.prev[i]; } }
     return out;
   }
 }
 
-/* ════════════════════════════════════════════════════
-   5. WEB WORKER — Inline Blob FFT Worker
-   (ใช้ Cooley–Tukey radix-2 DIT FFT จริง)
-════════════════════════════════════════════════════ */
-const FFT_WORKER_CODE = `
-function fft(re, im) {
-  const n = re.length;
-  if (n <= 1) return;
-  for (let i=1,j=0; i<n; i++) {
-    let bit = n>>1;
-    for (; j&bit; bit>>=1) j^=bit;
-    j^=bit;
-    if (i<j){ [re[i],re[j]]=[re[j],re[i]]; [im[i],im[j]]=[im[j],im[i]]; }
+/* ════════════════════
+   5. FFT WEB WORKER
+════════════════════ */
+const FFT_CODE = `
+function fft(re,im){
+  const n=re.length; if(n<=1)return;
+  for(let i=1,j=0;i<n;i++){
+    let bit=n>>1; for(;j&bit;bit>>=1)j^=bit; j^=bit;
+    if(i<j){[re[i],re[j]]=[re[j],re[i]];[im[i],im[j]]=[im[j],im[i]];}
   }
-  for (let len=2; len<=n; len<<=1) {
-    const ang = -2*Math.PI/len;
-    const wRe=Math.cos(ang), wIm=Math.sin(ang);
-    for (let i=0; i<n; i+=len) {
-      let curRe=1, curIm=0;
-      for (let j=0; j<len/2; j++) {
-        const uRe=re[i+j], uIm=im[i+j];
-        const vRe=re[i+j+len/2]*curRe - im[i+j+len/2]*curIm;
-        const vIm=re[i+j+len/2]*curIm + im[i+j+len/2]*curRe;
-        re[i+j]=uRe+vRe; im[i+j]=uIm+vIm;
-        re[i+j+len/2]=uRe-vRe; im[i+j+len/2]=uIm-vIm;
-        const nRe=curRe*wRe-curIm*wIm;
-        curIm=curRe*wIm+curIm*wRe; curRe=nRe;
+  for(let len=2;len<=n;len<<=1){
+    const ang=-2*Math.PI/len,wRe=Math.cos(ang),wIm=Math.sin(ang);
+    for(let i=0;i<n;i+=len){
+      let cRe=1,cIm=0;
+      for(let j=0;j<len/2;j++){
+        const uRe=re[i+j],uIm=im[i+j];
+        const vRe=re[i+j+len/2]*cRe-im[i+j+len/2]*cIm;
+        const vIm=re[i+j+len/2]*cIm+im[i+j+len/2]*cRe;
+        re[i+j]=uRe+vRe;im[i+j]=uIm+vIm;
+        re[i+j+len/2]=uRe-vRe;im[i+j+len/2]=uIm-vIm;
+        const nR=cRe*wRe-cIm*wIm;cIm=cRe*wIm+cIm*wRe;cRe=nR;
       }
     }
   }
 }
-self.onmessage = function(e) {
-  const { id, x, y, z } = e.data;
-  const n = x.length;
-  function calcMag(sig) {
-    const re = sig.slice(), im = new Array(n).fill(0);
-    fft(re, im);
-    return re.slice(0, n/2).map((_,i) => Math.sqrt(re[i]*re[i]+im[i]*im[i]) / (n/2));
-  }
-  self.postMessage({ id, fx: calcMag(x), fy: calcMag(y), fz: calcMag(z) });
-};
-`;
-const fftWorkerBlob = new Blob([FFT_WORKER_CODE], { type: 'application/javascript' });
-const fftWorkerURL  = URL.createObjectURL(fftWorkerBlob);
-const fftWorker     = new Worker(fftWorkerURL);
+self.onmessage=function(e){
+  const{id,x,y,z}=e.data,n=x.length;
+  function mag(s){const re=s.slice(),im=new Array(n).fill(0);fft(re,im);return re.slice(0,n/2).map((_,i)=>Math.sqrt(re[i]*re[i]+im[i]*im[i])/(n/2));}
+  self.postMessage({id,fx:mag(x),fy:mag(y),fz:mag(z)});
+};`;
+const fftWorker = new Worker(URL.createObjectURL(new Blob([FFT_CODE],{type:'application/javascript'})));
 
-/* ════════════════════════════════════════════════════
-   6. TREND INDICATOR
-════════════════════════════════════════════════════ */
-const prevValues = {};
-function getTrend(id, key, cur) {
-  const k    = `${id}_${key}`;
-  const prev = prevValues[k] ?? cur;
-  prevValues[k] = cur;
-  if (cur > prev * 1.05) return { arrow: '▲', color: '#ef4444' };
-  if (cur < prev * 0.95) return { arrow: '▼', color: '#10b981' };
-  return { arrow: '●', color: '#64748b' };
-}
+/* ════════════════════
+   6. STATE
+════════════════════ */
+let activeNodes     = {};   // { id: payload }
+let nodeBuffers     = {};   // { id: { wx,wy,wz: RingBuffer } }
+let nodeEMA         = {};   // { id: { wx,wy,wz: EMA } }
+let nodeAlarm       = {};   // { id: bool }
+let selectedNodeId  = null;
+let isDirty         = false;
 
-/* ════════════════════════════════════════════════════
-   7. CSV LOGGER
-════════════════════════════════════════════════════ */
+// Charts per node
+let miniCharts      = {};   // { id: uPlot }  — mini sparkline in list
+let detailCharts    = {};   // { wave: uPlot, fft: uPlot } — right panel
+let modalChart      = null; // uPlot in modal
+let modalMode       = 'wave';  // 'wave' | 'fft'
+let modalAxisState  = { x:true, y:true, z:true };
+
+const prevVal = {};
 const dataLog = [];
+const alarmCD = {};
 
-function logEntry(node, isAlarm) {
-  const now = new Date();
-  dataLog.push({
-    time:  now.toISOString(),
-    id:    node.id,
-    rms:   (node.rms  || 0).toFixed(3),
-    peak:  (node.peak || 0).toFixed(3),
-    freq:  (node.freq || 0).toFixed(2),
-    temp:  (node.temp || 0).toFixed(2),
-    alarm: isAlarm ? 'ALARM' : 'OK'
-  });
-  if (dataLog.length > LOG_MAX) dataLog.shift();
-  updateLogTable(dataLog[dataLog.length - 1]);
-  document.getElementById('log-count').textContent =
-    `${dataLog.length.toLocaleString()} records`;
+/* ════════════════════
+   7. TREND
+════════════════════ */
+function getTrend(id, key, cur) {
+  const k=`${id}_${key}`, prev=prevVal[k]??cur; prevVal[k]=cur;
+  if(cur>prev*1.05) return{arrow:'▲',color:'#ef4444'};
+  if(cur<prev*0.95) return{arrow:'▼',color:'#10b981'};
+  return{arrow:'●',color:'#64748b'};
 }
 
-function updateLogTable(row) {
-  const tbody = document.getElementById('log-tbody');
-  const tr    = document.createElement('tr');
-  const t     = new Date(row.time);
-  const ts    = `${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
-  tr.innerHTML = `
-    <td>${ts}</td>
-    <td style="color:#60a5fa;font-weight:700;">${esc(row.id)}</td>
-    <td>${row.rms}</td>
-    <td>${row.peak}</td>
-    <td>${row.freq}</td>
-    <td>${row.temp}</td>
-    <td style="color:${row.alarm==='ALARM'?'#f87171':'#34d399'};font-weight:700;">${row.alarm}</td>`;
-  tbody.insertBefore(tr, tbody.firstChild);
-  // keep DOM rows capped
-  while (tbody.children.length > 200) tbody.removeChild(tbody.lastChild);
-}
+/* ════════════════════
+   8. ALARM
+════════════════════ */
+if('Notification' in window && Notification.permission==='default') Notification.requestPermission();
 
-function exportCSV() {
-  if (!dataLog.length) { alert('No data to export yet.'); return; }
-  const hdr  = 'time,node,rms_mm_s,peak_G,dom_freq_Hz,temp_C,status\n';
-  const rows = dataLog.map(r =>
-    `${r.time},${r.id},${r.rms},${r.peak},${r.freq},${r.temp},${r.alarm}`
-  ).join('\n');
-  const blob = new Blob([hdr + rows], { type: 'text/csv;charset=utf-8;' });
-  const url  = URL.createObjectURL(blob);
-  const a    = Object.assign(document.createElement('a'), {
-    href: url,
-    download: `vibration_${Date.now()}.csv`
-  });
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
+function checkAlarm(n) {
+  const ok = (n.rms||0)<=THR.rms && (n.peak||0)<=THR.peak && (n.freq||0)<=THR.freq && (n.temp||0)<=THR.temp;
+  const alarm = !ok;
+  nodeAlarm[n.id] = alarm;
 
-/* ════════════════════════════════════════════════════
-   8. ALARM CHECK — visual + notification
-════════════════════════════════════════════════════ */
-// Request notification permission once
-if ('Notification' in window && Notification.permission === 'default') {
-  Notification.requestPermission();
-}
-
-const alarmCooldown = {};   // debounce per node (5s)
-
-function checkAlarm(node) {
-  const isAlarm =
-    (node.rms  || 0) > THRESHOLDS.rms  ||
-    (node.peak || 0) > THRESHOLDS.peak ||
-    (node.freq || 0) > THRESHOLDS.freq ||
-    (node.temp || 0) > THRESHOLDS.temp;
-
-  const card     = document.getElementById(`node-card-${node.id}`);
-  const alarmTag = document.getElementById(`alarm-tag-${node.id}`);
-  if (card) {
-    card.classList.toggle('alarm', isAlarm);
-  }
-  if (alarmTag) {
-    alarmTag.style.display = isAlarm ? 'inline-flex' : 'none';
+  // Update row in list
+  const row = document.getElementById(`nr-${n.id}`);
+  if(row) {
+    row.classList.toggle('alarm-row', alarm);
+    const dot = row.querySelector('.node-status-dot');
+    if(dot) dot.classList.toggle('alarm', alarm);
+    const pill = row.querySelector('.alarm-pill');
+    if(pill) pill.style.display = alarm?'inline':'none';
   }
 
-  // Global banner
-  const anyAlarm = Object.keys(activeNodes).some(id => nodeAlarmState[id]);
-  document.getElementById('alarm-banner').style.display = anyAlarm ? 'block' : 'none';
+  // Banner
+  const anyAlarm = Object.values(nodeAlarm).some(Boolean);
+  document.getElementById('alarm-banner').style.display = anyAlarm?'block':'none';
 
-  // Browser Notification (debounced 5s per node)
-  if (isAlarm) {
-    const now = Date.now();
-    if (!alarmCooldown[node.id] || now - alarmCooldown[node.id] > 5000) {
-      alarmCooldown[node.id] = now;
-      if (Notification.permission === 'granted') {
-        new Notification(`⚠️ ALARM: Node ${node.id}`, {
-          body: `RMS:${(node.rms||0).toFixed(2)} | Peak:${(node.peak||0).toFixed(2)} | Temp:${(node.temp||0).toFixed(1)}°C`,
-          icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><text y="14">⚡</text></svg>'
+  // Detail panel pill
+  if(selectedNodeId===n.id) {
+    const p = document.getElementById('detail-alarm-pill');
+    if(p) p.style.display = alarm?'inline':'none';
+  }
+
+  // Notification (debounce 5s)
+  if(alarm) {
+    const now=Date.now();
+    if(!alarmCD[n.id]||now-alarmCD[n.id]>5000) {
+      alarmCD[n.id]=now;
+      if(Notification.permission==='granted') {
+        new Notification(`⚠️ ALARM: ${n.id}`,{
+          body:`RMS:${(n.rms||0).toFixed(2)} Peak:${(n.peak||0).toFixed(2)} Temp:${(n.temp||0).toFixed(1)}°C`
         });
       }
     }
   }
-  return isAlarm;
+  return alarm;
 }
 
-/* ════════════════════════════════════════════════════
-   9. STATE
-════════════════════════════════════════════════════ */
-let activeNodes      = {};
-let nodeAlarmState   = {};
-let charts           = {};
-let ringBuffers      = {};    // { id: { wx, wy, wz } }
-let emaSmoothers     = {};    // { id: { wx, wy, wz } }
-let isDashboardDirty = false;
-let pendingFFT       = {};    // { id: payload } waiting for worker result
+/* ════════════════════
+   9. LOG
+════════════════════ */
+function logEntry(n, alarm) {
+  dataLog.push({
+    time:new Date().toISOString(), id:n.id,
+    rms:(n.rms||0).toFixed(3), peak:(n.peak||0).toFixed(3),
+    freq:(n.freq||0).toFixed(2), temp:(n.temp||0).toFixed(2),
+    status:alarm?'ALARM':'OK'
+  });
+  if(dataLog.length>LOG_MAX) dataLog.shift();
+  addLogRow(dataLog[dataLog.length-1]);
+  document.getElementById('log-count').textContent=`${dataLog.length.toLocaleString()} records`;
+}
 
-/* ════════════════════════════════════════════════════
-   10. FFT WORKER RESULT HANDLER
-════════════════════════════════════════════════════ */
+function addLogRow(r) {
+  const tbody=document.getElementById('log-tbody');
+  const tr=document.createElement('tr');
+  const t=new Date(r.time);
+  const ts=`${t.getHours().toString().padStart(2,'0')}:${t.getMinutes().toString().padStart(2,'0')}:${t.getSeconds().toString().padStart(2,'0')}`;
+  tr.innerHTML=`<td>${ts}</td><td style="color:#60a5fa;font-weight:700;">${esc(r.id)}</td><td>${r.rms}</td><td>${r.peak}</td><td>${r.freq}</td><td>${r.temp}</td><td style="color:${r.status==='ALARM'?'#f87171':'#34d399'};font-weight:700;">${r.status}</td>`;
+  tbody.insertBefore(tr,tbody.firstChild);
+  while(tbody.children.length>200) tbody.removeChild(tbody.lastChild);
+}
+
+function exportCSV() {
+  if(!dataLog.length){alert('No data yet.');return;}
+  const hdr='time,node,rms_mm_s,peak_G,freq_Hz,temp_C,status\n';
+  const rows=dataLog.map(r=>`${r.time},${r.id},${r.rms},${r.peak},${r.freq},${r.temp},${r.status}`).join('\n');
+  const a=Object.assign(document.createElement('a'),{href:URL.createObjectURL(new Blob([hdr+rows],{type:'text/csv'})),download:`vib_${Date.now()}.csv`});
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+/* ════════════════════
+   10. uPLOT OPTS
+════════════════════ */
+function mkOpts(w, h, showXAxis=false) {
+  return {
+    width:w, height:h,
+    scales:{ x:{time:false}, y:{} },
+    axes:[
+      { show:showXAxis, stroke:'#475569', size:20, grid:{stroke:'#1e293b66',width:1},
+        ticks:{stroke:'#1e293b66'}, values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(0):'') },
+      { stroke:'#475569', size:36, grid:{stroke:'#1e293b55',width:1},
+        ticks:{stroke:'#1e293b55'}, values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(1):'') }
+    ],
+    series:[
+      {},
+      { label:'X', stroke:'#f43f5e', width:1.8, points:{show:false} },
+      { label:'Y', stroke:'#10b981', width:1.8, points:{show:false} },
+      { label:'Z', stroke:'#3b82f6', width:1.8, points:{show:false} }
+    ],
+    cursor:{show:false}, padding:[4,2,4,0], legend:{show:false}
+  };
+}
+
+function mkMiniOpts(w) {
+  return {
+    width:w, height:MINI_H,
+    scales:{ x:{time:false}, y:{} },
+    axes:[{show:false},{show:false}],
+    series:[
+      {},
+      { label:'X', stroke:'#f43f5e', width:1.2, points:{show:false} },
+      { label:'Y', stroke:'#10b981', width:1.2, points:{show:false} },
+      { label:'Z', stroke:'#3b82f6', width:1.2, points:{show:false} }
+    ],
+    cursor:{show:false}, padding:[2,2,2,2], legend:{show:false}
+  };
+}
+
+/* ════════════════════
+   11. MINI SPARKLINE
+════════════════════ */
+function getSmoothedData(id) {
+  const rb = nodeBuffers[id], ema = nodeEMA[id];
+  if(!rb||!ema) return { wx:emptyArr(), wy:emptyArr(), wz:emptyArr() };
+  return {
+    wx: ema.wx.smooth(rb.wx.toArray()),
+    wy: ema.wy.smooth(rb.wy.toArray()),
+    wz: ema.wz.smooth(rb.wz.toArray()),
+  };
+}
+
+function getFFTData(id) {
+  const n=activeNodes[id];
+  if(!n) return { fx:emptyArr(), fy:emptyArr(), fz:emptyArr() };
+  return {
+    fx: n._fftX || n.fftX || emptyArr(),
+    fy: n._fftY || n.fftY || emptyArr(),
+    fz: n._fftZ || n.fftZ || emptyArr(),
+  };
+}
+
+function createOrUpdateMiniChart(id) {
+  const wrap = document.getElementById(`mini-wrap-${id}`);
+  if(!wrap) return;
+  const w = wrap.clientWidth || wrap.offsetWidth || 90;
+  if(w < 10) return;
+
+  const { wx, wy, wz } = getSmoothedData(id);
+  const data = [waveXArr, wx, wy, wz];
+
+  if(miniCharts[id]) {
+    miniCharts[id].setData(data);
+  } else {
+    wrap.innerHTML = '';
+    miniCharts[id] = new uPlot(mkMiniOpts(w), data, wrap);
+  }
+}
+
+/* ════════════════════
+   12. DETAIL CHARTS
+════════════════════ */
+function createDetailCharts(id) {
+  const wEl = document.getElementById('detail-chart-wave');
+  const fEl = document.getElementById('detail-chart-fft');
+  if(!wEl || !fEl) return;
+
+  // Destroy old
+  if(detailCharts.wave) { try{detailCharts.wave.destroy();}catch(e){} }
+  if(detailCharts.fft)  { try{detailCharts.fft.destroy();}catch(e){}  }
+  detailCharts = {};
+  wEl.innerHTML = '';
+  fEl.innerHTML = '';
+
+  const ww = wEl.clientWidth || 400;
+  const fw = fEl.clientWidth || 400;
+
+  const { wx, wy, wz } = getSmoothedData(id);
+  const { fx, fy, fz } = getFFTData(id);
+
+  detailCharts.wave = new uPlot(mkOpts(ww, DETAIL_H), [waveXArr, wx, wy, wz], wEl);
+  detailCharts.fft  = new uPlot(mkOpts(fw, DETAIL_H, true), [fftXArr, fx, fy, fz], fEl);
+
+  // Resize observer
+  const ro = new ResizeObserver(() => {
+    if(!detailCharts.wave) return;
+    const nw = wEl.clientWidth||400;
+    const nf = fEl.clientWidth||400;
+    if(nw>10) detailCharts.wave.setSize({width:nw, height:DETAIL_H});
+    if(nf>10) detailCharts.fft.setSize({width:nf, height:DETAIL_H});
+  });
+  ro.observe(wEl);
+  ro.observe(fEl);
+}
+
+function updateDetailCharts(id) {
+  if(!detailCharts.wave || !detailCharts.fft) return;
+  const { wx, wy, wz } = getSmoothedData(id);
+  const { fx, fy, fz } = getFFTData(id);
+  detailCharts.wave.setData([waveXArr, wx, wy, wz]);
+  detailCharts.fft.setData([fftXArr, fx, fy, fz]);
+}
+
+/* ════════════════════
+   13. SELECT NODE
+════════════════════ */
+function selectNode(id) {
+  // Remove previous selected style
+  if(selectedNodeId) {
+    const old = document.getElementById(`nr-${selectedNodeId}`);
+    if(old) old.classList.remove('selected');
+  }
+  selectedNodeId = id;
+  const row = document.getElementById(`nr-${id}`);
+  if(row) row.classList.add('selected');
+
+  // Show detail panel
+  document.getElementById('detail-placeholder').style.display = 'none';
+  document.getElementById('node-detail').classList.add('active');
+
+  // Set node name
+  document.getElementById('detail-node-id').textContent = id;
+
+  // Update stats
+  updateDetailStats(id);
+
+  // Create charts after DOM ready
+  requestAnimationFrame(() => {
+    setTimeout(() => createDetailCharts(id), 60);
+  });
+}
+
+function updateDetailStats(id) {
+  const n = activeNodes[id];
+  if(!n) return;
+  const rms=n.rms||0, peak=n.peak||0, freq=n.freq||0, temp=n.temp||0;
+
+  document.getElementById('d-rms').textContent  = rms.toFixed(2);
+  document.getElementById('d-peak').textContent = peak.toFixed(2);
+  document.getElementById('d-freq').textContent = freq.toFixed(1);
+  document.getElementById('d-temp').textContent = temp.toFixed(1);
+
+  const setT = (id, t) => {
+    const el=document.getElementById(id);
+    if(el){el.textContent=t.arrow; el.style.color=t.color;}
+  };
+  setT('d-rms-t',  getTrend(id,'rms',rms));
+  setT('d-peak-t', getTrend(id,'peak',peak));
+  setT('d-freq-t', getTrend(id,'freq',freq));
+  setT('d-temp-t', getTrend(id,'temp',temp));
+
+  const now=new Date();
+  document.getElementById('detail-last-update').textContent =
+    `อัปเดต ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}:${now.getSeconds().toString().padStart(2,'0')}`;
+}
+
+/* ════════════════════
+   14. FULLSCREEN MODAL
+════════════════════ */
+function openChartModal(id, mode='wave') {
+  if(!id) return;
+  modalMode = mode;
+  const n = activeNodes[id];
+  if(!n) return;
+
+  document.getElementById('chart-modal-overlay').classList.add('open');
+  document.getElementById('modal-node-name').textContent = id;
+
+  // Update info strip
+  document.getElementById('mi-rms').textContent  = (n.rms||0).toFixed(2);
+  document.getElementById('mi-peak').textContent = (n.peak||0).toFixed(2);
+  document.getElementById('mi-freq').textContent = (n.freq||0).toFixed(1);
+  document.getElementById('mi-temp').textContent = (n.temp||0).toFixed(1);
+
+  // Set active tab
+  switchModalTab(mode, false);
+  buildModalChart(id);
+}
+
+function closeChartModal() {
+  document.getElementById('chart-modal-overlay').classList.remove('open');
+  if(modalChart) { try{modalChart.destroy();}catch(e){} modalChart=null; }
+  document.getElementById('modal-chart-wrap').innerHTML = '';
+}
+
+// Close on overlay click
+document.getElementById('chart-modal-overlay').addEventListener('click', e => {
+  if(e.target.id==='chart-modal-overlay') closeChartModal();
+});
+
+// ESC key
+document.addEventListener('keydown', e => {
+  if(e.key==='Escape') closeChartModal();
+});
+
+function switchModalTab(mode, rebuild=true) {
+  modalMode = mode;
+  document.getElementById('mtab-wave').classList.toggle('active', mode==='wave');
+  document.getElementById('mtab-fft') .classList.toggle('active', mode==='fft');
+
+  const icon  = mode==='wave' ? '🌊' : '📡';
+  const title = mode==='wave' ? 'Waveform (EMA Smoothed)' : 'FFT Spectrum (Web Worker)';
+  document.getElementById('modal-chart-icon').textContent  = icon;
+  document.getElementById('modal-chart-title').textContent = title;
+
+  if(rebuild && selectedNodeId) buildModalChart(selectedNodeId);
+}
+
+function toggleModalAxis(ax) {
+  modalAxisState[ax] = !modalAxisState[ax];
+  const btn = document.getElementById(`atog-${ax}`);
+  if(btn) btn.classList.toggle(`on-${ax}`, modalAxisState[ax]);
+  if(selectedNodeId) buildModalChart(selectedNodeId);
+}
+
+function buildModalChart(id) {
+  const wrap = document.getElementById('modal-chart-wrap');
+  if(!wrap) return;
+
+  // Destroy old modal chart
+  if(modalChart) { try{modalChart.destroy();}catch(e){} modalChart=null; }
+  wrap.innerHTML = '';
+
+  // Calculate width
+  const modalEl = document.getElementById('chart-modal');
+  const w = (modalEl.clientWidth || 800) - 40;
+
+  // Prepare data
+  let xs, ax, ay, az;
+  if(modalMode === 'wave') {
+    const { wx, wy, wz } = getSmoothedData(id);
+    xs=waveXArr; ax=wx; ay=wy; az=wz;
+  } else {
+    const { fx, fy, fz } = getFFTData(id);
+    xs=fftXArr; ax=fx; ay=fy; az=fz;
+  }
+
+  // Apply axis visibility (replace hidden axis with zeros)
+  const da = modalAxisState.x ? ax : new Array(ax.length).fill(null);
+  const db = modalAxisState.y ? ay : new Array(ay.length).fill(null);
+  const dc = modalAxisState.z ? az : new Array(az.length).fill(null);
+
+  const opts = mkOpts(w, MODAL_H, modalMode==='fft');
+  modalChart = new uPlot(opts, [xs, da, db, dc], wrap);
+
+  // ResizeObserver for modal
+  const ro = new ResizeObserver(() => {
+    if(!modalChart) return;
+    const nw = (modalEl.clientWidth||800) - 40;
+    if(nw>10) modalChart.setSize({width:nw, height:MODAL_H});
+  });
+  ro.observe(modalEl);
+}
+
+/* ════════════════════
+   15. BUILD NODE ROW
+════════════════════ */
+function buildNodeRow(id) {
+  const list = document.getElementById('node-list');
+  // Remove waiting state
+  const waiting = document.getElementById('list-waiting');
+  if(waiting) waiting.remove();
+
+  const n = activeNodes[id];
+  const rms  = (n.rms  ||0).toFixed(2);
+  const peak = (n.peak ||0).toFixed(2);
+  const freq = (n.freq ||0).toFixed(1);
+  const temp = (n.temp ||0).toFixed(1);
+
+  list.insertAdjacentHTML('beforeend', `
+    <div class="node-row" id="nr-${id}" onclick="selectNode('${esc(id)}')">
+      <div class="node-row-left">
+        <div class="node-row-id">
+          <span class="node-status-dot"></span>
+          ${esc(id)}
+          <span class="alarm-pill">ALARM</span>
+        </div>
+        <div class="node-row-metrics">
+          <span class="node-metric-item">RMS <span class="node-metric-val" id="nr-rms-${id}">${rms}</span></span>
+          <span class="node-metric-item">Peak <span class="node-metric-val" id="nr-peak-${id}">${peak}</span></span>
+          <span class="node-metric-item">Freq <span class="node-metric-val" id="nr-freq-${id}">${freq}</span></span>
+          <span class="node-metric-item">Temp <span class="node-metric-val" id="nr-temp-${id}">${temp}</span></span>
+        </div>
+      </div>
+      <!-- Mini Sparkline — กดเพื่อเปิด Modal กราฟใหญ่ -->
+      <div class="mini-chart-wrap" id="mini-wrap-${id}"
+           onclick="event.stopPropagation(); openChartModal('${esc(id)}','wave')">
+      </div>
+    </div>
+  `);
+
+  // Init mini chart after paint
+  requestAnimationFrame(() => {
+    setTimeout(() => createOrUpdateMiniChart(id), 60);
+  });
+
+  // Update node count
+  document.getElementById('node-count-badge').textContent = Object.keys(activeNodes).length;
+}
+
+function updateNodeRow(id) {
+  const n    = activeNodes[id];
+  const rms  = (n.rms  ||0).toFixed(2);
+  const peak = (n.peak ||0).toFixed(2);
+  const freq = (n.freq ||0).toFixed(1);
+  const temp = (n.temp ||0).toFixed(1);
+
+  const setEl = (eid, val) => { const el=document.getElementById(eid); if(el) el.textContent=val; };
+  setEl(`nr-rms-${id}`,  rms);
+  setEl(`nr-peak-${id}`, peak);
+  setEl(`nr-freq-${id}`, freq);
+  setEl(`nr-temp-${id}`, temp);
+}
+
+/* ════════════════════
+   16. FFT WORKER
+════════════════════ */
 fftWorker.onmessage = (e) => {
   const { id, fx, fy, fz } = e.data;
-  if (!activeNodes[id]) return;
+  if(!activeNodes[id]) return;
   activeNodes[id]._fftX = fx;
   activeNodes[id]._fftY = fy;
   activeNodes[id]._fftZ = fz;
-  isDashboardDirty = true;
+  isDirty = true;
 };
 
-/* ════════════════════════════════════════════════════
-   11. uPLOT OPTIONS
-════════════════════════════════════════════════════ */
-function makeWaveOpts(w) {
-  return {
-    width: w, height: CHART_H,
-    scales: {
-      x: { time: false },
-      y: { range: (u,mn,mx) => [mn<-10?mn*1.2:-10, mx>10?mx*1.2:10] }
-    },
-    axes: [
-      { show: false },
-      {
-        stroke:'#475569', size:40,
-        grid:{ stroke:'#1e293b88', width:1 },
-        ticks:{ stroke:'#1e293b88', width:1 },
-        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(1):'')
-      }
-    ],
-    series: [
-      {},
-      { label:'X', stroke:'#f43f5e', width:1.8, points:{show:false}, value:fmtV },
-      { label:'Y', stroke:'#10b981', width:1.8, points:{show:false}, value:fmtV },
-      { label:'Z', stroke:'#3b82f6', width:1.8, points:{show:false}, value:fmtV }
-    ],
-    cursor:{ show:false }, padding:[8,4,4,0]
-  };
-}
-function makeFftOpts(w) {
-  return {
-    width: w, height: CHART_H,
-    scales: {
-      x: { time: false },
-      y: { range: (u,mn,mx) => [0, mx>10?mx*1.2:10] }
-    },
-    axes: [
-      {
-        stroke:'#475569', size:28,
-        grid:{ show:false }, ticks:{ stroke:'#1e293b88', width:1 },
-        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(0)+'Hz':'')
-      },
-      {
-        stroke:'#475569', size:40,
-        grid:{ stroke:'#1e293b88', width:1 },
-        ticks:{ stroke:'#1e293b88', width:1 },
-        values:(u,vs)=>vs.map(v=>v!=null?v.toFixed(1):'')
-      }
-    ],
-    series: [
-      {},
-      { label:'X', stroke:'#f43f5e', width:1.8, points:{show:false}, value:fmtV },
-      { label:'Y', stroke:'#10b981', width:1.8, points:{show:false}, value:fmtV },
-      { label:'Z', stroke:'#3b82f6', width:1.8, points:{show:false}, value:fmtV }
-    ],
-    cursor:{ show:false }, padding:[8,4,4,0]
-  };
-}
+/* ════════════════════
+   17. MAIN UPDATE
+════════════════════ */
+function processNode(id) {
+  const n = activeNodes[id];
 
-/* ════════════════════════════════════════════════════
-   12. INIT CHARTS (after DOM paint)
-════════════════════════════════════════════════════ */
-function initChartsForNode(id) {
-  const wEl = document.getElementById(`chart-wave-${id}`);
-  const fEl = document.getElementById(`chart-fft-${id}`);
-  if (!wEl || !fEl) return false;
-  const w = wEl.getBoundingClientRect().width;
-  if (w < 10) return false;
+  // Init buffers
+  if(!nodeBuffers[id]) {
+    nodeBuffers[id] = { wx:new RingBuffer(BUF_SIZE), wy:new RingBuffer(BUF_SIZE), wz:new RingBuffer(BUF_SIZE) };
+    nodeEMA[id]     = { wx:new EMA(BUF_SIZE), wy:new EMA(BUF_SIZE), wz:new EMA(BUF_SIZE) };
+  }
 
-  const e = emptyF();
-  charts[id] = {
-    wave: new uPlot(makeWaveOpts(w), [waveX, e, [...e], [...e]], wEl),
-    fft:  new uPlot(makeFftOpts(w),  [fftX,  e, [...e], [...e]], fEl)
-  };
+  // Fill ring buffers
+  const rawX = n.waveX || n.wave || emptyArr();
+  const rawY = n.waveY || emptyArr();
+  const rawZ = n.waveZ || emptyArr();
+  nodeBuffers[id].wx.pushArray(rawX);
+  nodeBuffers[id].wy.pushArray(rawY);
+  nodeBuffers[id].wz.pushArray(rawZ);
 
-  // apply existing data immediately
-  applyChartData(id);
-
-  const ro = new ResizeObserver(() => {
-    if (!charts[id]) return;
-    const nw = wEl.getBoundingClientRect().width;
-    if (nw < 10) return;
-    charts[id].wave.setSize({ width: nw, height: CHART_H });
-    charts[id].fft.setSize({ width: nw, height: CHART_H });
+  // Dispatch FFT
+  fftWorker.postMessage({
+    id,
+    x: Array.from(nodeBuffers[id].wx.toArray()),
+    y: Array.from(nodeBuffers[id].wy.toArray()),
+    z: Array.from(nodeBuffers[id].wz.toArray()),
   });
-  ro.observe(wEl);
-  return true;
+
+  // Build or update row
+  if(!document.getElementById(`nr-${id}`)) {
+    buildNodeRow(id);
+  } else {
+    updateNodeRow(id);
+    createOrUpdateMiniChart(id);
+  }
+
+  // Alarm
+  const alarm = checkAlarm(n);
+  logEntry(n, alarm);
+
+  // Update detail if selected
+  if(selectedNodeId === id) {
+    updateDetailStats(id);
+    updateDetailCharts(id);
+
+    // Update modal if open
+    if(document.getElementById('chart-modal-overlay').classList.contains('open')) {
+      buildModalChart(id);
+    }
+  }
 }
 
-/* ════════════════════════════════════════════════════
-   13. APPLY CHART DATA (Ring Buffer + EMA)
-════════════════════════════════════════════════════ */
-function applyChartData(id) {
-  if (!charts[id]) return;
-  const n   = activeNodes[id];
-  if (!n)    return;
-  const rb  = ringBuffers[id];
-  const ema = emaSmoothers[id];
-  if (!rb || !ema) return;
+/* ════════════════════
+   18. RENDER LOOP
+════════════════════ */
+setInterval(() => {
+  if(isDirty) {
+    Object.keys(activeNodes).forEach(id => {
+      if(document.getElementById(`nr-${id}`)) createOrUpdateMiniChart(id);
+      if(selectedNodeId===id) updateDetailCharts(id);
+    });
+    isDirty = false;
+  }
+}, 200);
 
-  const wx = ema.wx.smooth(rb.wx.toArray());
-  const wy = ema.wy.smooth(rb.wy.toArray());
-  const wz = ema.wz.smooth(rb.wz.toArray());
-
-  charts[id].wave.setData([waveX, wx, wy, wz]);
-
-  // FFT: use worker result if available, else raw
-  const fx = n._fftX || n.fftX || emptyF();
-  const fy = n._fftY || n.fftY || emptyF();
-  const fz = n._fftZ || n.fftZ || emptyF();
-  charts[id].fft.setData([fftX, fx, fy, fz]);
-}
-
-/* ════════════════════════════════════════════════════
-   14. HELPERS
-════════════════════════════════════════════════════ */
+/* ════════════════════
+   19. UTILS
+════════════════════ */
 function esc(s) {
   return String(s).replace(/[&<>"']/g,
     c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])
   );
 }
-function setStat(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.textContent = val;
-}
-function setTrend(elId, trend) {
-  const el = document.getElementById(elId);
-  if (el) { el.textContent = trend.arrow; el.style.color = trend.color; }
-}
 
-/* ════════════════════════════════════════════════════
-   15. MAIN DASHBOARD UPDATE
-════════════════════════════════════════════════════ */
-function updateDashboard() {
-  const container = document.getElementById('dashboard');
-  const ws = container.querySelector('.waiting-state');
-  if (ws) ws.remove();
-
-  Object.keys(activeNodes).forEach((id) => {
-    const n      = activeNodes[id];
-    const cardId = `node-card-${id}`;
-    let   card   = document.getElementById(cardId);
-
-    /* ── Build Ring Buffers & Smoothers for new node ── */
-    if (!ringBuffers[id]) {
-      ringBuffers[id]  = { wx: new RingBuffer(BUF_SIZE), wy: new RingBuffer(BUF_SIZE), wz: new RingBuffer(BUF_SIZE) };
-      emaSmoothers[id] = { wx: new EmaSmoother(BUF_SIZE), wy: new EmaSmoother(BUF_SIZE), wz: new EmaSmoother(BUF_SIZE) };
-    }
-
-    /* ── Fill Ring Buffer ── */
-    const rawX = n.waveX || n.wave || emptyF();
-    const rawY = n.waveY || emptyF();
-    const rawZ = n.waveZ || emptyF();
-    ringBuffers[id].wx.pushArray(rawX);
-    ringBuffers[id].wy.pushArray(rawY);
-    ringBuffers[id].wz.pushArray(rawZ);
-
-    /* ── Dispatch FFT Worker ── */
-    fftWorker.postMessage({
-      id,
-      x: Array.from(ringBuffers[id].wx.toArray()),
-      y: Array.from(ringBuffers[id].wy.toArray()),
-      z: Array.from(ringBuffers[id].wz.toArray())
-    });
-
-    /* ── Build Card HTML if not exist ── */
-    if (!card) {
-      container.insertAdjacentHTML('beforeend', `
-        <div class="node-container" id="${cardId}">
-          <div class="node-header">
-            <div class="node-title">
-              <div class="node-icon">🏭</div>
-              Node: ${esc(String(n.id))}
-            </div>
-            <div style="display:flex;gap:6px;align-items:center;">
-              <span class="alarm-tag" id="alarm-tag-${id}">⚠️ ALARM</span>
-              <span class="live-badge">● LIVE</span>
-            </div>
-          </div>
-
-          <div class="node-stats">
-            <div class="stat-card">
-              <div class="stat-icon">📊</div>
-              <div class="stat-label">Max RMS</div>
-              <div class="stat-row">
-                <span class="stat-value" style="color:#60a5fa" id="val-rms-${id}">--</span>
-                <span class="stat-trend" id="trend-rms-${id}">●</span>
-              </div>
-              <div class="stat-unit">mm/s</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">📈</div>
-              <div class="stat-label">Max Peak</div>
-              <div class="stat-row">
-                <span class="stat-value" style="color:#a78bfa" id="val-peak-${id}">--</span>
-                <span class="stat-trend" id="trend-peak-${id}">●</span>
-              </div>
-              <div class="stat-unit">G</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">🎵</div>
-              <div class="stat-label">Dom Freq</div>
-              <div class="stat-row">
-                <span class="stat-value" style="color:#f59e0b" id="val-freq-${id}">--</span>
-                <span class="stat-trend" id="trend-freq-${id}">●</span>
-              </div>
-              <div class="stat-unit">Hz</div>
-            </div>
-            <div class="stat-card">
-              <div class="stat-icon">🌡️</div>
-              <div class="stat-label">Temperature</div>
-              <div class="stat-row">
-                <span class="stat-value" style="color:#10b981" id="val-temp-${id}">--</span>
-                <span class="stat-trend" id="trend-temp-${id}">●</span>
-              </div>
-              <div class="stat-unit">°C</div>
-            </div>
-          </div>
-
-          <div class="graph-grid">
-            <div class="graph-block">
-              <div class="graph-header">
-                <span class="graph-title">
-                  <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#10b981"/></svg>
-                  Time Waveform <small style="color:#475569;font-weight:400;">(EMA)</small>
-                </span>
-                <span class="graph-unit">mm/s</span>
-              </div>
-              <div class="chart-wrap" id="chart-wave-${id}"></div>
-              <div class="axis-legend">
-                <span class="leg-x">X</span>
-                <span class="leg-y">Y</span>
-                <span class="leg-z">Z</span>
-              </div>
-            </div>
-            <div class="graph-block">
-              <div class="graph-header">
-                <span class="graph-title">
-                  <svg width="8" height="8"><circle cx="4" cy="4" r="3.5" fill="#3b82f6"/></svg>
-                  FFT Spectrum <small style="color:#475569;font-weight:400;">(Worker)</small>
-                </span>
-                <span class="graph-unit">mm/s</span>
-              </div>
-              <div class="chart-wrap" id="chart-fft-${id}"></div>
-              <div class="axis-legend">
-                <span class="leg-x">X</span>
-                <span class="leg-y">Y</span>
-                <span class="leg-z">Z</span>
-              </div>
-            </div>
-          </div>
-        </div>
-      `);
-
-      /* Init charts after DOM paint */
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (!initChartsForNode(id)) {
-            setTimeout(() => initChartsForNode(id), 120);
-          }
-        });
-      });
-    }
-
-    /* ── Update Stats + Trend ── */
-    const rms  = n.rms  || 0;
-    const peak = n.peak || 0;
-    const freq = n.freq || 0;
-    const temp = n.temp || 0;
-
-    setStat(`val-rms-${id}`,  rms.toFixed(2));
-    setStat(`val-peak-${id}`, peak.toFixed(2));
-    setStat(`val-freq-${id}`, freq.toFixed(1));
-    setStat(`val-temp-${id}`, temp.toFixed(1));
-
-    setTrend(`trend-rms-${id}`,  getTrend(id, 'rms',  rms));
-    setTrend(`trend-peak-${id}`, getTrend(id, 'peak', peak));
-    setTrend(`trend-freq-${id}`, getTrend(id, 'freq', freq));
-    setTrend(`trend-temp-${id}`, getTrend(id, 'temp', temp));
-
-    /* ── Alarm Check ── */
-    const isAlarm = checkAlarm(n);
-    nodeAlarmState[id] = isAlarm;
-
-    /* ── Log Entry ── */
-    logEntry(n, isAlarm);
-
-    /* ── Update Charts ── */
-    applyChartData(id);
-  });
-}
-
-/* ════════════════════════════════════════════════════
-   16. RENDER LOOP — throttled 200ms
-════════════════════════════════════════════════════ */
-setInterval(() => {
-  if (isDashboardDirty) {
-    updateDashboard();
-    isDashboardDirty = false;
-  }
-}, 200);
-
-/* ════════════════════════════════════════════════════
-   17. MQTT — Exponential Backoff
-════════════════════════════════════════════════════ */
+/* ════════════════════
+   20. MQTT
+════════════════════ */
 const BROKER = 'wss://4d79d42984154e37aab32ca068370f40.s1.eu.hivemq.cloud:8884/mqtt';
 const TOPIC  = 'factory/vibration/live';
-let retryDelay = 1000;
+let   retryDelay = 1000;
 
 const mqttClient = mqtt.connect(BROKER, {
-  username:        'vibmonitor',
-  password:        'Mcl19508',
-  clientId:        'WebDash_' + Math.random().toString(16).substr(2, 8),
-  reconnectPeriod: 0,     // manual backoff
-  keepalive:       60,
-  clean:           true
+  username: 'vibmonitor',
+  password: 'Mcl19508',
+  clientId: 'WebDash_' + Math.random().toString(16).substr(2,8),
+  reconnectPeriod: 0,
+  keepalive: 60,
+  clean: true
 });
 
 function setStatus(html, cls) {
   const el = document.getElementById('conn-status');
-  el.innerHTML = html;
-  el.className = `badge ${cls}`;
+  el.innerHTML = html; el.className = `badge ${cls}`;
 }
 
 mqttClient.on('connect', () => {
   retryDelay = 1000;
-  setStatus('<span class="dot pulse"></span> Connected — XYZ Live', 'badge-online');
-  mqttClient.subscribe(TOPIC, { qos: 1 });
+  setStatus('<span class="dot pulse"></span> Connected', 'badge-online');
+  mqttClient.subscribe(TOPIC, { qos:1 });
 });
 
-mqttClient.on('message', (topic, message) => {
+mqttClient.on('message', (topic, msg) => {
   try {
-    const p = JSON.parse(message.toString());
-    if (!p || !p.id) return;
+    const p = JSON.parse(msg.toString());
+    if(!p||!p.id) return;
     activeNodes[p.id] = p;
-    isDashboardDirty  = true;
-  } catch (_) {}
+    processNode(p.id);
+  } catch(_) {}
 });
 
 mqttClient.on('offline', () => {
   setStatus('<span class="dot"></span> Offline', 'badge-offline');
-  // Exponential Backoff
   retryDelay = Math.min(retryDelay * 2, 30000);
   setTimeout(() => {
     setStatus('<span class="dot pulse"></span> Reconnecting...', 'badge-warn');
@@ -1075,9 +1433,34 @@ mqttClient.on('offline', () => {
   }, retryDelay);
 });
 
-mqttClient.on('error', () => {
-  setStatus('<span class="dot"></span> Error', 'badge-offline');
-});
+mqttClient.on('error', () => setStatus('<span class="dot"></span> Error', 'badge-offline'));
+
+/* ════════════════════
+   21. DEMO MODE
+   ลบ /* และ *​/ เพื่อเปิดใช้งาน
+════════════════════ */
+/*
+const DEMO_IDS = ['CM10-6522-18','CM10-6522-20','CM10-6523-26','CM11-6532-18'];
+let demoTick=0;
+setInterval(()=>{
+  demoTick++;
+  DEMO_IDS.forEach((id,idx)=>{
+    const rms  = 1.2 + idx*0.5 + Math.sin(demoTick*0.1+idx)*0.4 + Math.random()*0.2;
+    const peak = rms*(2+Math.random());
+    const freq = 48+idx*12+Math.random()*4;
+    const temp = 50+idx*3+Math.random()*2;
+    const N    = 128;
+    const waveX = Array.from({length:N},(_, i)=>{
+      const t=i/1000;
+      return rms*0.8*Math.sin(2*Math.PI*freq*t)+rms*0.15*Math.sin(2*Math.PI*freq*2*t)+(Math.random()-.5)*.06;
+    });
+    const waveY = waveX.map(v=>v*.75+(Math.random()-.5)*.04);
+    const waveZ = waveX.map(v=>v*.55+(Math.random()-.5)*.04);
+    activeNodes[id]={ id, rms, peak, freq, temp, waveX, waveY, waveZ };
+    processNode(id);
+  });
+},1200);
+*/
 
 </script>
 </body>
